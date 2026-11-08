@@ -4,6 +4,13 @@ Status: source implementation with host tests. Not yet compiled with the JieLi
 toolchain or validated on the badge. The previously installed upstream firmware
 does not implement these commands. Do not send display commands to stock firmware.
 
+Build verification, 2026-11-08: host tests passed on Windows and GitHub's Linux
+runner. The validated compiler downloaded and ran successfully after pinning its
+immutable archive URL. SDK cloning then failed at Git ref discovery with HTTP
+502 from the vendor's GitLab; the retry stalled and was cancelled. An exact-commit
+mirror was not found. The workflow now probes the SDK server first and reports a
+clear bounded error rather than waiting indefinitely. No new OTA image exists yet.
+
 ## Scope
 
 The new **Bluetooth Display** menu item presents a 360x360 card with a title,

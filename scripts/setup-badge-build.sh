@@ -87,7 +87,8 @@ else
     log "2/5 SDK: cloning the vanilla JieLi SDK (~1.1 GB, several minutes)"
     log "        source: $(git -C "${REPO_ROOT}" config -f .gitmodules \
                             --get "submodule.${SDK_REL}.url")"
-    git -C "${REPO_ROOT}" submodule update --init --depth 1 "${SDK_REL}" \
+    git -c http.lowSpeedLimit=1024 -c http.lowSpeedTime=90 -C "${REPO_ROOT}" \
+        submodule update --init --depth 1 --progress "${SDK_REL}" \
         || fail "submodule clone failed — see docs/build-badge-firmware.md §Troubleshooting"
     [[ -f "${SDK_ROOT}/SDK/Makefile" ]] || fail "SDK checked out but SDK/Makefile is missing"
 fi
