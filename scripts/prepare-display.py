@@ -23,9 +23,15 @@ def digest(data):
 
 def check(sdk, allow_headers=False):
     record = json.loads((sdk / MANIFEST).read_text(encoding="utf8"))
+    system_path = sdk / ".badge-system-overlay.json"
+    system = json.loads(system_path.read_text(encoding="utf8")) if system_path.exists() else None
     if record["base_patch_sha256"] != digest((ROOT / "patches/badge/badge-menu.patch").read_bytes()):
         raise ValueError("Upstream patch changed; re-create the SDK before applying this overlay")
     for name, expected in record["files"].items():
+        if system and name in system["files"]:
+            if system["base_files"].get(name) != expected:
+                raise ValueError("System overlay does not match this Display base")
+            expected = system["files"][name]
         if allow_headers and name.endswith(".h"):
             continue
         if digest((sdk / name).read_bytes()) != expected:
@@ -48,6 +54,10 @@ def prepare(sdk):
     if (MARK in ui) != (MARK in qix):
         raise ValueError("Partial overlay detected; restore the two SDK files before retrying")
     if MARK in ui:
+        if (sdk / ".badge-system-overlay.json").exists():
+            check(sdk)
+            print("Display overlay verified; system overlay is installed")
+            return
         check(sdk, allow_headers=True)
         refresh_headers(sdk)
         print("Display overlay already applied; headers refreshed")

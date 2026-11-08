@@ -10,6 +10,7 @@ on:
       - 'tools/qix-ble/**'
       - 'scripts/*display*'
       - 'scripts/import-sdk.py'
+      - 'scripts/prepare-badge-system.py'
       - 'tests/**'
       - '.github/workflows/badge-display.yml'
   workflow_dispatch:
@@ -34,7 +35,7 @@ jobs:
           python -m pytest -q tools/qix-ble/tests/test_display.py
           tools/qix-ble/tests/test_windows_ota_size.py
           tools/qix-ble/tests/test_update_manager.py
-          tools/qix-ble/tests/test_frame.py tests/test_display_overlay.py tests/test_sdk_import.py
+          tools/qix-ble/tests/test_frame.py tests/test_display_overlay.py tests/test_system_overlay.py tests/test_sdk_import.py
       - run: python scripts/test-display-native.py
 
   firmware:
@@ -63,6 +64,8 @@ jobs:
         run: bash scripts/setup-badge-build.sh --skip-toolchain --skip-postbuild
       - name: Apply Display overlay
         run: python scripts/prepare-display.py
+      - name: Apply battery status and optional local identity support
+        run: python scripts/prepare-badge-system.py
       - name: Build and package E87 OTA using preserved OEM uboot
         run: bash scripts/build-badge-fw.sh --board e87 --clean --ota firmware-builds/e87-display-v1.ufw
       - name: Record image checksum

@@ -1,8 +1,14 @@
 # Bluetooth Display v1 (E87 development branch)
 
-Status: host tests and a clean JieLi SDK build passed on 2026-11-08. The E87 OTA
-image is packaged and checked offline; it has not yet been installed or tested on
-the badge. The upstream prebuilt firmware does not implement Display commands.
+Status: host tests, a clean JieLi SDK build and the first E87 hardware check
+passed on 2026-11-08. The badge accepted the OTA image, booted, negotiated Display
+v1 over BLE and acknowledged a card update (revision 1). The owner confirmed the
+title, body and teal progress bar were visible on the physical screen. The
+upstream prebuilt firmware does not implement Display commands.
+
+This hardware check covers one card from a Windows host. Repeated updates,
+reconnects, leaving/reopening Display, CLEAR, long-running operation and the
+existing tools after this update have not yet been checked on hardware.
 
 Reference build: source commit `6fc8828c163b1ab195a5d6b7a34846a3fae2dbef`,
 [GitHub Actions run 42529018450](https://github.com/vasilievh/jieli-ble-badge-research/actions/runs/42529018450).
