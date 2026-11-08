@@ -9,8 +9,9 @@
 set -euo pipefail
 
 # === CONFIGURACIÓN ============================================
-# URL pretty (sigue redirect a Aliyun OSS). Versión actual: 20250805.1.
-readonly TOOLCHAIN_URL="https://pkgman.jieliapp.com/s/linux-toolchain"
+# Use the immutable archive matching the checksum below. The /s/linux-toolchain
+# alias is rolling and now serves a newer release, not this validated compiler.
+readonly TOOLCHAIN_URL="https://jl-update.oss-cn-shenzhen.aliyuncs.com/jieli-linux-toolchains-20250805.1.tar.xz"
 readonly TOOLCHAIN_ARCHIVE_NAME="jieli-linux-toolchains-20250805.1.tar.xz"
 readonly TOOLCHAIN_SHA256_EXPECTED="f686586bcfb45e0f0bb27fd2b39c7a7f313cb4f0e88a66a14da621ffa8225958"
 # ==============================================================
