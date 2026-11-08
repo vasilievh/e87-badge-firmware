@@ -1,17 +1,22 @@
 # Bluetooth Display v1 (E87 development branch)
 
-Status: source implementation with host tests. Not yet compiled with the JieLi
-toolchain or validated on the badge. The previously installed upstream firmware
-does not implement these commands. Do not send display commands to stock firmware.
+Status: host tests and a clean JieLi SDK build passed on 2026-11-08. The E87 OTA
+image is packaged and checked offline; it has not yet been installed or tested on
+the badge. The upstream prebuilt firmware does not implement Display commands.
 
-Build verification, 2026-11-08: host tests passed on Windows and GitHub's Linux
-runner. The validated compiler downloaded and ran successfully after pinning its
-immutable archive URL. SDK cloning then failed at Git ref discovery with HTTP
-502 from the vendor's GitLab; the retry stalled and was cancelled. An exact-commit
-mirror was not found. The workflow now probes the SDK server first and reports a
-clear bounded error rather than waiting indefinitely. No new OTA image exists yet.
+Reference build: source commit `6fc8828c163b1ab195a5d6b7a34846a3fae2dbef`,
+[GitHub Actions run 42529018450](https://github.com/vasilievh/jieli-ble-badge-research/actions/runs/42529018450).
+The image is 1,079,363 bytes, SHA256
+`0147557ba8e523952c0f2b33e51e850caf547ddb4f74e035df78dc639cb3c843`.
+Application size: 991,264 bytes in the 995,616-byte fixed OTA code slot (4,352
+bytes remaining). Larger features will require code/asset size reductions or
+separate data storage. Current cards are RAM-only and do not consume file space.
 
-The exact SDK ZIP was subsequently obtained and verified: SHA256
+Offline verification checks the Qix wrapper, UFW headers/list/flash CRCs, JLFS
+headers and changed application/parent CRCs. Flash geometry and the opaque OEM
+loader/configuration payloads are byte-identical to the known-working base.
+
+The exact SDK ZIP is verified by SHA256
 `bdad4eee49456f3d2d3abf1a763b14d8bb0b0fd6f1fde104d7504fc364350683`.
 All 43 modified upstream files match the patch's Git blob preimages. The workflow
 now downloads that archive directly from JieLi and checks its full SHA256 before
@@ -72,8 +77,8 @@ but does not synthesize or publish a vendor commit. All SDK changes stay local.
 On Windows without WSL: push `feat/ble-display` to this fork. Its **Badge Display**
 GitHub Actions workflow runs the host tests, fetches the pinned SDK/toolchain and
 builds an `e87-display-v1` artifact containing the OTA image and SHA256SUMS.
-The workflow's actual vendor build still needs a successful first run; host tests
-do not establish flash readiness. It never connects to or flashes a device.
+The workflow never connects to or flashes a device. Its successful reference run
+is linked above; each new image still needs offline checks and a hardware test.
 
 Use only the packaged `firmware-builds/*.ufw` after reviewing build results.
 The native SDK `update.ufw` is not a BLE OTA image. The packaging continues to use
