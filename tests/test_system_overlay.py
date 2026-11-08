@@ -36,6 +36,9 @@ def test_layers_are_idempotent_and_validate_together(sdk):
     ui = before.decode()
     assert "badge_status_build();" in ui and "badge_system_poll();" in ui
     assert "while (g_charge_active)" not in ui
+    assert '#include "lock_wallpaper.h"' not in ui and 'g_lock_img_buf' not in ui
+    assert '#include "badge_wallpaper.h"' in ui and 'if (wp) {' in ui
+    assert '#define QIX_STAGE_END     0x2A0000u' in (sdk / system.QIX).read_text(encoding="utf8")
     assert "badge_update_battery_gate()) { return; }   /* OTA" in ui
 
 

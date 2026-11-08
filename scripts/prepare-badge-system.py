@@ -16,11 +16,13 @@ SDK = ROOT / "tools/community-re/jieli-sdks/e_badge_707_sdk_200"
 UI = "SDK/apps/common/ui/lvgl_v8/lvgl_main.c"
 ADV = "SDK/apps/common/third_party_profile/jieli/rcsp/adv/ble_rcsp_adv.c"
 CFG = "SDK/apps/watch/user_cfg.c"
+QIX = "SDK/apps/common/third_party_profile/jieli/rcsp/qix_ota_server.c"
 MANIFEST = ".badge-system-overlay.json"
 HEADERS = {
     "badge_system_ui.h": str(Path(UI).with_name("badge_system_ui.h")),
     "badge_power_status.h": str(Path(UI).with_name("badge_power_status.h")),
     "badge_identity.h": str(Path(CFG).with_name("badge_identity.h")),
+    "badge_wallpaper.h": str(Path(UI).with_name("badge_wallpaper.h")),
 }
 MARK = "/* BADGE_SYSTEM_OVERLAY_V1 */"
 
@@ -58,8 +60,8 @@ def prepare(sdk):
     display = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(display)
     display.check(sdk)
-    originals = {name: (sdk / name).read_bytes() for name in (UI, ADV, CFG)}
-    ui, adv, cfg = (originals[name].decode("utf8") for name in (UI, ADV, CFG))
+    originals = {name: (sdk / name).read_bytes() for name in (UI, ADV, CFG, QIX)}
+    ui, adv, cfg, qix = (originals[name].decode("utf8") for name in (UI, ADV, CFG, QIX))
     if any(MARK in text for text in (ui, adv, cfg)):
         raise ValueError("Partial system overlay detected")
     # Remove the exclusive black charge page; existing main/menu screens remain usable.
@@ -100,13 +102,25 @@ def prepare(sdk):
     start = ui.index('            while (g_charge_active) {')
     end = ui.index('            if (g_warn_active)', start)
     ui = ui[:start] + ui[end:]
+    # Drop the 41 KB embedded wallpaper and the 41 KB full-image RAM buffer.
+    ui = replace(ui, '#include "lock_wallpaper.h"             /* embedded 144x144 RGB565 lock-screen wallpaper */',
+                 '/* Wallpaper is device-local data, not an embedded application bitmap. */')
+    start = ui.index('/* ---- BLE-updatable lock wallpaper')
+    end = ui.index('/* ---- Lock / screensaver: display + touch OFF', start)
+    ui = ui[:start] + '#include "badge_wallpaper.h"\n\n' + ui[end:]
+    ui = replace(ui, '        const lv_img_dsc_t *wp = lock_img_resolve();\n',
+                 '        const lv_img_dsc_t *wp = lock_img_resolve();\n        if (wp) {\n')
+    ui = replace(ui, '        lv_obj_add_flag(img, LV_OBJ_FLAG_GESTURE_BUBBLE);\n',
+                 '        lv_obj_add_flag(img, LV_OBJ_FLAG_GESTURE_BUBBLE);\n        }\n')
+    # Preserve the full-resolution wallpaper sector range during staging erase.
+    qix = replace(qix, '#define QIX_STAGE_END     0x3BE000u', '#define QIX_STAGE_END     0x2A0000u')
     # The label uses a fixed width; scan response limits remain below 31 bytes.
     cfg = '#ifdef CONFIG_BADGE_MENU\n' + MARK + '\n#include "badge_identity.h"\n#endif\n' + cfg
     cfg = replace(cfg, '    sprintf(bt_cfg.edr_name, "%s", TCFG_JL_WALLPAPER_ADV_NAME);',
                   '    sprintf(bt_cfg.edr_name, "%s", TCFG_JL_WALLPAPER_ADV_NAME);\n#ifdef CONFIG_BADGE_MENU\n    badge_identity_load((char *)bt_cfg.edr_name);\n#endif')
     adv = replace(adv, '        const char *nm = "EC-MOUSE";',
                   '        ' + MARK + '\n        extern const char *badge_mouse_local_name(void);\n        const char *nm = badge_mouse_local_name();')
-    output = {UI: ui.encode(), ADV: adv.encode(), CFG: cfg.encode()}
+    output = {UI: ui.encode(), ADV: adv.encode(), CFG: cfg.encode(), QIX: qix.encode()}
     output.update({target: (ROOT / "firmware/display" / name).read_bytes() for name, target in HEADERS.items()})
     record = {
         "display_manifest_sha256": digest((sdk / ".badge-display-overlay.json").read_bytes()),

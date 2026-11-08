@@ -1,13 +1,14 @@
 # Battery status and device-local personalization
 
-Development overlay, not yet hardware-tested. Apply after `prepare-display.py`:
+Development overlay. The current streaming wallpaper changes are not yet
+hardware-tested. Apply after `prepare-display.py`:
 
 ```sh
 python scripts/prepare-badge-system.py
 bash scripts/build-badge-fw.sh --board e87 --clean --ota firmware-builds/e87-display-v1.ufw
 ```
 
-Reference clean SDK build: source `29d7d72`,
+Previous clean SDK build (before streaming wallpaper): source `29d7d72`,
 [Actions run 42534138963](https://github.com/vasilievh/jieli-ble-badge-research/actions/runs/42534138963).
 The application is 991,456 bytes in the fixed 995,616-byte code slot (4,160 bytes
 remaining). The Qix OTA image SHA256 is
@@ -20,8 +21,8 @@ erase is synchronous and can exceed the old five-second write timeout. This is
 separate from the C1 notification timeout. Ordinary chunk writes retain the
 five-second timeout. It does not add automatic retries of staging initialization.
 
-The home screen and menu show the SDK battery percentage and BATTERY, CHARGING
-or FULL. Charger presence combines the SDK flag with the LDO5V/LVCMP hardware
+The menu shows the SDK battery percentage and BATTERY, CHARGING or FULL. The home
+screen is reserved for the wallpaper. Charger presence combines the SDK flag with the LDO5V/LVCMP hardware
 detectors, sampled every 100 ms with three matching samples per transition.
 FULL comes from the SDK charge-full event; this is not a current measurement.
 The percentage is the SDK's voltage-based estimate, not a calibrated fuel gauge.
@@ -39,11 +40,22 @@ Firmware is generic. No personal name or wallpaper is compiled into it. Generate
 private records **outside the repository** and provision them directly over BLE
 from the Update screen. Do not use Display mode for raw-flash commands.
 
-The existing wallpaper slot starts at `0x300000`, accepts at most 144x144 RGB565
-and scales to the 360x360 screen. Use `tools/make_lockimg.py`; see `lock-image.md`.
-The separate identity sector starts at `0x30B000`, after the largest wallpaper's
-last byte (`0x30A20F`), below VIRFAT (`0x33E000`) and above the OTA staging range.
-An ordinary app-only OTA preserves both. Full resource/flash replacements may not.
+The full-resolution wallpaper slot is `0x2A0000..0x2E0000`. A 360x360 RGB565
+record occupies 259,216 bytes, ending at `0x2DF48F`. The new firmware caps OTA
+staging at `0x2A0000`; the fixed E87 OTA image ends at `0x285828` when staged,
+leaving a gap before the wallpaper. It cannot overlap the identity sector at
+`0x30B000` or VIRFAT at `0x33E000`. The original `0x300000` wallpaper slot remains
+a fallback for records up to 144x144; it is not enlarged into adjacent data.
+
+The LVGL custom decoder reads visible row spans directly from flash. At 360x360
+there is no image resampling and no full-image RAM allocation. A 720-byte scratch
+row supports older smaller images; LVGL also uses its own temporary row buffer.
+The 41,472-byte embedded bitmap and old 41,472-byte static RAM image buffer are
+removed. With no valid private wallpaper, the existing black home/instructions
+remain usable. Use `tools/make_lockimg.py`; see `lock-image.md`.
+
+An ordinary fixed-geometry app-only OTA preserves these records. Full
+resource/flash replacements may not.
 
 ```sh
 python tools/make_badge_identity.py YOUR_NAME /private/location/identity.bin

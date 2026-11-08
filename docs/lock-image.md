@@ -1,27 +1,36 @@
-# Updating the lock-screen image
+# Device-local home wallpaper
 
-144×144 RGB565 image on the lock screen. The firmware reads a BLE-updatable slot at flash
-`0x300000` (falls back to the built-in default if empty). Update it over BLE — no reflash.
+Wallpapers are data outside the application code. Keep personal images and blobs
+outside the repository; the build/CI does not need them.
 
-## Over BLE (no reflash)
+| Firmware | Image | Flash address |
+| --- | --- | --- |
+| Streaming system overlay | 360x360 RGB565, native screen resolution | `0x2A0000` |
+| Earlier menu/Display firmware | Up to 144x144 RGB565, enlarged to screen | `0x300000` |
 
-Badge must be on the **Update** screen (advertising `EC-BADGE`).
+The streaming firmware prefers the full-resolution slot, falls back to the legacy
+small image and finally to a black screen with instructions. It has no embedded
+default bitmap. The image is read a row at a time; 360x360 needs 259,216 bytes of
+flash including its 16-byte header, without a full-image RAM buffer.
 
-```sh
-# 1. Build the blob (needs Pillow). Square, <= 144.
-python3 tools/make_lockimg.py my-picture.png lockimg.bin
+## Full resolution
 
-# 2. Push it (clear any stale bond first — the Update screen is cleartext)
-bluetoothctl remove <MAC>
-qix scan --timeout 5 >/dev/null
-QIX_CONNECT_VIA_DBUS=1 qix rawflash <MAC> lockimg.bin --addr 0x300000 --verify --reboot
-```
-
-The badge reboots showing the new image. The slot survives firmware OTA. A
-`le-connection-abort-by-local` on the first attempt is normal — it retries.
-
-## Change the built-in default (needs rebuild)
+Install the streaming system overlay firmware first (or provision the new slot
+immediately before that OTA). Open **Settings -> Update**, then:
 
 ```sh
-python3 tools/make_lock_wallpaper.py my-picture.png <sdk>/SDK/apps/common/ui/lvgl_v8/lock_wallpaper.h
+python tools/make_lockimg.py /private/my-picture.png /private/wallpaper.bin 360
+qix rawflash ADDRESS /private/wallpaper.bin --addr 0x2A0000 --verify --reboot
 ```
+
+The converter requires Pillow. A normal fixed-geometry E87 application OTA
+preserves the full-resolution slot and the separate device identity sector.
+The new firmware limits OTA staging to end before the full-resolution slot.
+Do not enlarge a 144px record at `0x300000`: a 360px record there would overwrite
+the identity sector and the beginning of VIRFAT. See `badge-system.md` for bounds.
+
+## Legacy compatibility
+
+Use size `144` and address `0x300000` with older firmware. The converter retains
+144 as its default for that compatibility. The record is `LKMG`, width/height
+LE16, pixel-byte count LE32, reserved LE32, then RGB565 little-endian pixels.

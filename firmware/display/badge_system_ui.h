@@ -2,7 +2,7 @@
  * radio, screen or saved brightness. The upstream OTA-session dimmer is separate. */
 #include "badge_power_status.h"
 static badge_power_state badge_power;
-static lv_obj_t *badge_home_power, *badge_menu_power;
+static lv_obj_t *badge_menu_power;
 static u32 badge_power_poll_ms;
 static char badge_power_last_text[24];
 static unsigned badge_power_last_color;
@@ -28,18 +28,16 @@ static void badge_system_poll(void)
      * application flag alone was not sufficient to show charge UI on all units. */
     badge_power_sample(&badge_power, get_charge_online_flag() ||
                        get_ldo5v_online_hw() || get_lvcmp_det());
-    if (g_badge_locked || !badge_home_power || !badge_menu_power) return;
+    if (g_badge_locked || !badge_menu_power) return;
     color = badge_power_text(text, sizeof(text), get_vbat_percent(),
                              badge_usb_online(), get_charge_full_flag());
     if (color == badge_power_last_color && !strcmp(text, badge_power_last_text)) return;
     strcpy(badge_power_last_text, text); badge_power_last_color = color;
-    lv_label_set_text(badge_home_power, text);
     lv_label_set_text(badge_menu_power, text);
-    lv_obj_set_style_text_color(badge_home_power, lv_color_hex(color), 0);
     lv_obj_set_style_text_color(badge_menu_power, lv_color_hex(color), 0);
 }
 
-static lv_obj_t *badge_power_label(lv_obj_t *parent, int home)
+static lv_obj_t *badge_power_label(lv_obj_t *parent)
 {
     lv_obj_t *label = lv_label_create(parent);
     lv_obj_set_width(label, 204);
@@ -50,14 +48,13 @@ static lv_obj_t *badge_power_label(lv_obj_t *parent, int home)
     lv_obj_set_style_pad_all(label, 4, 0);
     lv_obj_clear_flag(label, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_flag(label, LV_OBJ_FLAG_GESTURE_BUBBLE);
-    lv_obj_align(label, home ? LV_ALIGN_BOTTOM_MID : LV_ALIGN_TOP_MID, 0, home ? -32 : 40);
+    lv_obj_align(label, LV_ALIGN_TOP_MID, 0, 40);
     return label;
 }
 
 static void badge_status_build(void)
 {
-    badge_home_power = badge_power_label(g_lock_scr, 1);
-    badge_menu_power = badge_power_label(g_menu_scr, 0);
+    badge_menu_power = badge_power_label(g_menu_scr);
     badge_system_poll();
 }
 
