@@ -65,6 +65,9 @@ def import_sdk(archive, destination):
     # No vendor commit is invented; provenance is the verified vendor ZIP hash.
     subprocess.run(["git", "init", "--quiet", str(destination)], check=True)
     subprocess.run(["git", "-C", str(destination), "config", "core.autocrlf", "false"], check=True)
+    # checkout's submodule cleanup expects this read-only provenance URL to exist.
+    subprocess.run(["git", "-C", str(destination), "remote", "add", "origin",
+                    "https://gitlab.zh-jieli.com/e_badge/e_badge_707_sdk_200.git"], check=True)
     (destination / ".badge-sdk-archive.json").write_text(
         json.dumps({"vendor_commit": SDK_COMMIT, "archive_sha256": digest}, indent=2), encoding="utf8")
     print(f"SDK archive verified and imported ({len(members)} entries)")

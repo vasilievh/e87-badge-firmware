@@ -193,6 +193,8 @@ if [[ "${DO_OTA}" == 1 ]]; then
         mkdir -p "${REPO_ROOT}/firmware-builds"
         OTA_OUT="${REPO_ROOT}/firmware-builds/${OTA_STEM}-$(date -u +%Y%m%dT%H%M%SZ).ufw"
     fi
+    # Explicit --ota paths also need a parent directory on a fresh checkout.
+    mkdir -p "$(dirname "${OTA_OUT}")"
 
     case "${BOARD}" in
     e87)

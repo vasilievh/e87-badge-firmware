@@ -52,7 +52,8 @@ def test_verified_archive_import_preserves_files_and_existing_work(tmp_path, mon
     sdk_import.import_sdk(archive, destination)
     assert (destination / "SDK/Makefile").read_text() == "all:\n\t@true\n"
     assert (destination / ".badge-sdk-archive.json").exists()
-    assert len(git_calls) == 2
+    assert len(git_calls) == 3
+    assert git_calls[-1][-3:] == ["add", "origin", "https://gitlab.zh-jieli.com/e_badge/e_badge_707_sdk_200.git"]
     before = (destination / "SDK/Makefile").read_bytes()
     with pytest.raises(ValueError, match="must be empty"):
         sdk_import.import_sdk(archive, destination)
