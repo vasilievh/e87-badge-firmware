@@ -13,12 +13,12 @@ detectors, sampled every 100 ms with three matching samples per transition.
 FULL comes from the SDK charge-full event; this is not a current measurement.
 The percentage is the SDK's voltage-based estimate, not a calibrated fuel gauge.
 
-USB attachment stops Bluetooth tools and dims the screen to 10%, retaining the
-upstream low-load policy. It opens the existing menu instead of an exclusive
-black charging page. The home/menu remain accessible. Bluetooth tools show a
-warning on USB; Update remains available, with the existing transfer/session
-deferral so a plug event cannot interrupt OTA. No charger voltage/current limits,
-power-off thresholds or PMU settings are changed by this overlay.
+USB attachment updates the indicator without stopping Bluetooth tools, changing
+the active screen or changing saved brightness. All tools remain usable on USB.
+Update retains its existing 10% dimmer while waiting on USB and its transfer/session
+deferral. No charger voltage/current limits, power-off thresholds or PMU settings
+are changed by this overlay. Operation of each tool on USB still needs hardware
+verification on the target badge.
 
 ## Keep personal values out of Git and CI
 

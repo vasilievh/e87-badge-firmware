@@ -85,10 +85,6 @@ def prepare(sdk):
     at = ui.index(MARK)
     ui = ui[:at] + '''static u8 badge_ble_battery_gate(void)
 {
-    if (badge_usb_online()) {
-        badge_warn_show("BLUETOOTH PAUSED\\nwhile charging\\nunplug USB");
-        return 1;
-    }
     return badge_update_battery_gate();
 }
 

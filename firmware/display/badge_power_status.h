@@ -2,7 +2,8 @@
 #ifndef BADGE_POWER_STATUS_H
 #define BADGE_POWER_STATUS_H
 #include <stdint.h>
-#include <stdio.h>
+/* The embedding translation unit provides snprintf. Do not include the
+ * toolchain stdio.h here: the vendor SDK defines its own filesystem FILE. */
 typedef struct {
     uint8_t initialized, online, candidate, count;
 } badge_power_state;

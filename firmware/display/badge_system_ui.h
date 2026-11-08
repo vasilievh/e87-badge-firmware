@@ -1,9 +1,8 @@
-/* Included in the LVGL task only. Keep charging power/radio handling conservative;
- * show status on the existing home/menu screens instead of a black charge page. */
+/* Included in the LVGL task only. USB changes status, never the active tool,
+ * radio, screen or saved brightness. The upstream OTA-session dimmer is separate. */
 #include "badge_power_status.h"
 static badge_power_state badge_power;
 static lv_obj_t *badge_home_power, *badge_menu_power;
-static void badge_lock_wake(void);
 static u32 badge_power_poll_ms;
 static char badge_power_last_text[24];
 static unsigned badge_power_last_color;
@@ -64,22 +63,10 @@ static void badge_status_build(void)
 
 static void badge_charge_screen_enter(void)
 {
-    if (g_scanner_active) ble_op_scan_enable(0);
-    g_scanner_active = g_scanner_browsing = g_scanner_detail_active = 0;
-    g_badge_spoof_mode = g_badge_mouse_mode = g_badge_update_active = 0;
-    g_on_update_scr = g_warn_active = g_ble_want_on = 0;
-    ble_off();
     g_charge_active = 1;
-    if (g_badge_locked) badge_lock_wake();
-    lv_scr_load(g_menu_scr); kp_set_menu();
-    /* Retain the upstream low-load charge policy, without hiding battery status. */
-    extern int lcd_drv_backlight_ctrl(u8 percent);
-    lcd_drv_backlight_ctrl(10);
 }
 
 static void badge_charge_screen_exit(void)
 {
     g_charge_active = g_charge_waiting = 0;
-    extern int lcd_drv_backlight_ctrl(u8 percent);
-    lcd_drv_backlight_ctrl(g_bright_pct[g_bright_idx]);
 }
