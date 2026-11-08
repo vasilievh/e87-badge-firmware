@@ -1,0 +1,65 @@
+name: Badge Display
+
+on:
+  push:
+    branches: [feat/ble-display]
+  pull_request:
+    paths:
+      - 'firmware/display/**'
+      - 'tools/qix-ble/**'
+      - 'scripts/*display*'
+      - '.github/workflows/badge-display.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: display-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -e 'tools/qix-ble[dev]'
+      - run: >-
+          python -m pytest -q tools/qix-ble/tests/test_display.py
+          tools/qix-ble/tests/test_windows_ota_size.py
+          tools/qix-ble/tests/test_update_manager.py
+          tools/qix-ble/tests/test_frame.py tests/test_display_overlay.py
+      - run: python scripts/test-display-native.py
+
+  firmware:
+    needs: tests
+    # Build only our explicit development branch or a manual run, never a fork PR.
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.repository_owner == 'vasilievh')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install compiler, pinned SDK and upstream badge patch
+        run: bash scripts/setup-badge-build.sh --skip-postbuild
+      - name: Apply Display overlay
+        run: python scripts/prepare-display.py
+      - name: Build and package E87 OTA using preserved OEM uboot
+        run: bash scripts/build-badge-fw.sh --board e87 --ota firmware-builds/e87-display-v1.ufw
+      - name: Record image checksum
+        run: sha256sum firmware-builds/e87-display-v1.ufw > firmware-builds/SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: e87-display-v1
+          path: |
+            firmware-builds/e87-display-v1.ufw
+            firmware-builds/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 14

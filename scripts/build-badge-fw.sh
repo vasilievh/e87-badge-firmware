@@ -93,7 +93,12 @@ readonly BOARD CHIPKEY_ID OTA_STEM
 [[ -f "${SDK_DIR}/Makefile" ]] \
     || fail "SDK not checked out at ${SDK_REL} — run scripts/setup-badge-build.sh"
 
-if ! git -C "${SDK_ROOT}" apply --reverse --check "${REPO_ROOT}/${PATCH_REL}" 2>/dev/null; then
+if [[ -f "${SDK_ROOT}/.badge-display-overlay.json" ]]; then
+    [[ "${BOARD}" == "e87" && "${MENU}" == 1 ]] \
+        || fail "the Display overlay currently supports only --board e87 with the menu enabled"
+    python3 "${REPO_ROOT}/scripts/prepare-display.py" --sdk "${SDK_ROOT}" --check \
+        || fail "Display overlay validation failed"
+elif ! git -C "${SDK_ROOT}" apply --reverse --check "${REPO_ROOT}/${PATCH_REL}" 2>/dev/null; then
     fail "badge-menu.patch is not applied to the SDK — run scripts/setup-badge-build.sh"
 fi
 

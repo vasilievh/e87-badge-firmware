@@ -23,6 +23,7 @@ tools/GhidraMCP/
 
 # ── Build output (regenerable) ──────────────────────────────────────────────
 firmware-builds/
+.build-check/
 *.o
 *.elf.bak
 

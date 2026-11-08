@@ -1,5 +1,11 @@
 # jieli-ble-badge-research
 
+> **Development branch: Bluetooth Display v1.** RAM-only text/color/progress cards,
+> a Python PC client, native protocol tests and an E87 build workflow.
+> See [docs/ble-display.md](docs/ble-display.md) for build status and instructions.
+> The Display sources have host validation; an SDK build and real-device test are
+> still required. The upstream prebuilt firmware does not contain this mode.
+
 Reverse-engineering a **$10 JieLi AC707N / BR35 e-badge (E87 & DG01)** — round 360×360 RGB565 display,
 AXS5106L capacitive touch, 2 ADKEY buttons, 4 MB NOR flash, BLE — and flashing **100 % custom
 firmware onto a sealed OEM badge over BLE**: no USB, no opening the case, no loader.
