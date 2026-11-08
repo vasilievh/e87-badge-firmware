@@ -9,6 +9,8 @@ on:
       - 'firmware/display/**'
       - 'tools/qix-ble/**'
       - 'scripts/*display*'
+      - 'scripts/import-sdk.py'
+      - 'tests/**'
       - '.github/workflows/badge-display.yml'
   workflow_dispatch:
 
@@ -32,7 +34,7 @@ jobs:
           python -m pytest -q tools/qix-ble/tests/test_display.py
           tools/qix-ble/tests/test_windows_ota_size.py
           tools/qix-ble/tests/test_update_manager.py
-          tools/qix-ble/tests/test_frame.py tests/test_display_overlay.py
+          tools/qix-ble/tests/test_frame.py tests/test_display_overlay.py tests/test_sdk_import.py
       - run: python scripts/test-display-native.py
 
   firmware:
@@ -48,13 +50,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Check availability of the pinned SDK server
+      - name: Download pinned SDK source archive
         run: |
-          sdk_url=$(git config -f .gitmodules --get submodule.tools/community-re/jieli-sdks/e_badge_707_sdk_200.url)
-          if ! timeout 90s git -c http.lowSpeedLimit=1 -c http.lowSpeedTime=30 ls-remote "$sdk_url" HEAD; then
-            echo "::error::JieLi SDK server is unavailable (timeout/HTTP error). Firmware compilation requires this pinned SDK; retry after the vendor server recovers."
-            exit 1
-          fi
+          curl --fail --location --connect-timeout 20 --max-time 900 --retry 2 --retry-delay 5 \
+            'https://gitlab.zh-jieli.com/api/v4/projects/1463/repository/archive.zip?sha=d0167685d032d745d88fe50233302edd46941622' \
+            --output "$RUNNER_TEMP/e87-sdk.zip"
+      - name: Verify and import SDK archive
+        run: python scripts/import-sdk.py "$RUNNER_TEMP/e87-sdk.zip"
       - name: Install validated compiler
         run: bash scripts/setup-jieli-toolchain.sh
       - name: Fetch pinned SDK and apply upstream badge patch
@@ -62,7 +64,7 @@ jobs:
       - name: Apply Display overlay
         run: python scripts/prepare-display.py
       - name: Build and package E87 OTA using preserved OEM uboot
-        run: bash scripts/build-badge-fw.sh --board e87 --ota firmware-builds/e87-display-v1.ufw
+        run: bash scripts/build-badge-fw.sh --board e87 --clean --ota firmware-builds/e87-display-v1.ufw
       - name: Record image checksum
         run: sha256sum firmware-builds/e87-display-v1.ufw > firmware-builds/SHA256SUMS
       - uses: actions/upload-artifact@v4

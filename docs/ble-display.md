@@ -11,6 +11,12 @@ immutable archive URL. SDK cloning then failed at Git ref discovery with HTTP
 mirror was not found. The workflow now probes the SDK server first and reports a
 clear bounded error rather than waiting indefinitely. No new OTA image exists yet.
 
+The exact SDK ZIP was subsequently obtained and verified: SHA256
+`bdad4eee49456f3d2d3abf1a763b14d8bb0b0fd6f1fde104d7504fc364350683`.
+All 43 modified upstream files match the patch's Git blob preimages. The workflow
+now downloads that archive directly from JieLi and checks its full SHA256 before
+importing it. No locally downloaded SDK or personal files are uploaded to GitHub.
+
 ## Scope
 
 The new **Bluetooth Display** menu item presents a 360x360 card with a title,
@@ -49,6 +55,19 @@ header in `firmware/display`, rerun `prepare-display.py` before building.
 The overlay is separate from upstream's large patch; exact anchors and an SHA256
 manifest reject stale/partially edited SDK sources. To start afresh, use a separate
 clean checkout rather than resetting an SDK containing your own work.
+
+If you already downloaded the pinned vendor ZIP, import it instead of Git cloning:
+
+```sh
+python3 scripts/import-sdk.py /path/to/vendor-sdk.zip
+bash scripts/setup-badge-build.sh --skip-postbuild
+python3 scripts/prepare-display.py
+bash scripts/build-badge-fw.sh --board e87 --clean --ota firmware-builds/e87-display-v1.ufw
+```
+
+The importer accepts only the verified archive above and an empty destination.
+It initializes a local Git working tree so the upstream patch can be applied,
+but does not synthesize or publish a vendor commit. All SDK changes stay local.
 
 On Windows without WSL: push `feat/ble-display` to this fork. Its **Badge Display**
 GitHub Actions workflow runs the host tests, fetches the pinned SDK/toolchain and
