@@ -34,6 +34,7 @@ jobs:
       - run: >-
           python -m pytest -q tools/qix-ble/tests/test_display.py
           tools/qix-ble/tests/test_windows_ota_size.py
+          tools/qix-ble/tests/test_transport_write_timeout.py
           tools/qix-ble/tests/test_update_manager.py
           tools/qix-ble/tests/test_frame.py tests/test_display_overlay.py tests/test_system_overlay.py tests/test_sdk_import.py
       - run: python scripts/test-display-native.py

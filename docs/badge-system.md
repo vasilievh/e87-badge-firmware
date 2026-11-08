@@ -7,6 +7,19 @@ python scripts/prepare-badge-system.py
 bash scripts/build-badge-fw.sh --board e87 --clean --ota firmware-builds/e87-display-v1.ufw
 ```
 
+Reference clean SDK build: source `29d7d72`,
+[Actions run 42534138963](https://github.com/vasilievh/jieli-ble-badge-research/actions/runs/42534138963).
+The application is 991,456 bytes in the fixed 995,616-byte code slot (4,160 bytes
+remaining). The Qix OTA image SHA256 is
+`307057e204675e7457f0a68b85789812982e44037fabf2b429ce95e83c14117c`.
+Offline CRC, geometry and OEM loader/configuration preservation checks passed.
+Battery/USB UI behavior and local identity still need physical confirmation.
+
+The host allows 30 seconds for the initial C0 ATT write acknowledgement: staging
+erase is synchronous and can exceed the old five-second write timeout. This is
+separate from the C1 notification timeout. Ordinary chunk writes retain the
+five-second timeout. It does not add automatic retries of staging initialization.
+
 The home screen and menu show the SDK battery percentage and BATTERY, CHARGING
 or FULL. Charger presence combines the SDK flag with the LDO5V/LVCMP hardware
 detectors, sampled every 100 ms with three matching samples per transition.

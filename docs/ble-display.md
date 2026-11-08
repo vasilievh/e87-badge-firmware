@@ -45,8 +45,10 @@ The embedded fonts do not yet promise German umlauts or Cyrillic. Unicode fonts,
 images, drawing primitives and touch events are subsequent protocol extensions.
 
 BLE is enabled only while Display is open; it advertises as **EC-BADGE**.
-Button 1 returns to the menu and disconnects. Plugging in USB follows upstream's
-charge-screen behavior and ends Display mode. Disconnecting a PC leaves the last
+Button 1 returns to the menu and disconnects. With the optional
+[system overlay](badge-system.md), USB leaves the current tool/BLE session running
+and updates home/menu battery status. Without it, upstream's charge-screen behavior
+ends Display mode on USB. Disconnecting a PC leaves the last
 card visible; reopening Display resets it to the waiting card.
 Display does not require bonding, link encryption or an application password.
 Nearby clients can replace the card while this mode is open.
