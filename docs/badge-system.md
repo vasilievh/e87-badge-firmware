@@ -16,6 +16,13 @@ remaining). The Qix OTA image SHA256 is
 Offline CRC, geometry and OEM loader/configuration preservation checks passed.
 Battery/USB UI behavior and local identity still need physical confirmation.
 
+Streaming build: source `57d879d`,
+[Actions run 42536832540](https://github.com/vasilievh/jieli-ble-badge-research/actions/runs/42536832540).
+The application is 950,048 bytes, leaving 45,568 bytes in the same code slot.
+Image SHA256: `6397c0a4dd9f21943887b6c8bd29e8afed19eec5b6ed4e5844fdcbcb680f7868`.
+The clean SDK build and offline integrity/geometry/preservation checks passed.
+The new decoder still needs physical-screen confirmation.
+
 The host allows 30 seconds for the initial C0 ATT write acknowledgement: staging
 erase is synchronous and can exceed the old five-second write timeout. This is
 separate from the C1 notification timeout. Ordinary chunk writes retain the
