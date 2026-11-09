@@ -45,7 +45,10 @@ advertised **name** changes `OEM → custom firmware`.
   reassembles the frame; its `0xC3` ACK still keeps one chunk in flight. The previous
   480-byte write-with-response mode took about 10 minutes per image on Windows; it remains
   available with `QIX_OTA_SAFE=1`. `qix flash` prints the measured KB/s. Linux/macOS are
-  unchanged. Not yet measured on hardware.
+  unchanged. Measured on 2026-11-09 (Windows host, E87, build `468a76e`): 1054 KB in
+  114 s, 9.2 KB/s. One earlier attempt the same night dropped the link during the
+  synchronous staging erase that follows `0xC0` (before any chunk was sent); simply
+  re-entering Update and retrying worked.
 - **Third-party crypto (`jltech`):** vendored as pure Python in `tools/ufw-repack/jltech/` —
   nothing to obtain, no `crcmod`. Only `scripts/gen_chipkey_keyfile.py` still needs the external
   `jl-misctools` mirror. See [README](../README.md#dependencies).
