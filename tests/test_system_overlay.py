@@ -21,6 +21,13 @@ def sdk(tmp_path):
     cfg = tmp_path / system.CFG
     cfg.write_text('    sprintf(bt_cfg.edr_name, "%s", TCFG_JL_WALLPAPER_ADV_NAME);\n'
                    + cfg.read_text(encoding="utf8"), encoding="utf8")
+    # Unchanged vendor TE configuration that badge_safety.h depends on (pinned SDK).
+    for name, text in ((system.SDK_CONFIG, "#define TCFG_LCD_PIN_TE IO_PORTC_00 // LCD TE\r\n"),
+                       (system.BOARD_CFG, "#define TCFG_LCD_TE_USED_PEND 1\n"
+                                          "#define TCFG_LCD_TE_IO      TCFG_LCD_PIN_TE\n")):
+        target = tmp_path / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(text.encode())
     display.prepare(tmp_path)
     return tmp_path
 
@@ -89,3 +96,13 @@ def test_check_rejects_identity_source_drift(sdk):
     cfg.write_bytes(cfg.read_bytes() + b"\n/* unexpected edit */\n")
     with pytest.raises(ValueError, match="outside"):
         system.check(sdk)
+
+
+def test_te_pin_configuration_drift_is_rejected_before_writes(sdk):
+    cfg = sdk / system.BOARD_CFG
+    cfg.write_text(cfg.read_text(encoding="utf8").replace("TE_USED_PEND 1", "TE_USED_PEND 0"),
+                   encoding="utf8")
+    before = (sdk / system.UI).read_bytes()
+    with pytest.raises(ValueError, match="TE pin configuration"):
+        system.prepare(sdk)
+    assert (sdk / system.UI).read_bytes() == before

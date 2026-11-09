@@ -139,7 +139,18 @@ static int bs_page(const bs_sleep *s, const bs_watchdog *w, uint32_t te, uint32_
 #include "gpio.h"
 #include "system/timer.h"
 #include "asm/cpu.h"
-#include "ui/lcd/lcd_drive.h"
+
+/* Not "ui/lcd/lcd_drive.h": it pulls app_config.h into lvgl_main.c for the first
+ * time (redefining TCFG_UI_ENABLE and the macro defaults for everything after this
+ * point). Same layout and section as the SDK's REGISTER_LCD_SLEEP_HEADLER(), which
+ * interface/ui/ui.ld collects with KEEP(*(.lcd_sleep_headler)). The TE pin and
+ * TCFG_LCD_TE_USED_PEND are checked against the SDK by prepare-badge-system.py. */
+struct lcd_sleep_headler {
+    char *name;
+    void (*enter)(void);
+    void (*exit)(void);
+};
+#define BS_TE_PIN IO_PORTC_00   /* TCFG_LCD_PIN_TE in sdk_config.h */
 
 static volatile uint32_t bs_te_irqs;
 static volatile uint32_t bs_ui_loops;
@@ -154,11 +165,7 @@ void lv_lcd_te_sync_int_handler(void)
 
 static void bs_lcd_sleep_enter(void)
 {
-#if defined(TCFG_LCD_TE_USED_PEND) && TCFG_LCD_TE_USED_PEND && defined(TCFG_LCD_TE_IO)
-    if (TCFG_LCD_TE_IO != NO_CONFIG_PORT) {
-        gpio_set_mode(IO_PORT_SPILT(TCFG_LCD_TE_IO), PORT_INPUT_PULLDOWN_10K);
-    }
-#endif
+    gpio_set_mode(IO_PORT_SPILT(BS_TE_PIN), PORT_INPUT_PULLDOWN_10K);
     bs_sleep_enter(&bs_sleep_state, timer_get_ms(), bs_te_irqs);
 }
 
@@ -167,7 +174,8 @@ static void bs_lcd_sleep_exit(void)
     bs_sleep_exit(&bs_sleep_state, timer_get_ms(), bs_te_irqs);
 }
 
-REGISTER_LCD_SLEEP_HEADLER(badge_safety_lcd_sleep) = {
+const struct lcd_sleep_headler badge_safety_lcd_sleep
+    __attribute__((section(".lcd_sleep_headler"), used)) = {
     .name = "badge_safety",
     .enter = bs_lcd_sleep_enter,
     .exit = bs_lcd_sleep_exit,

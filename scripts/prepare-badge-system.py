@@ -18,6 +18,8 @@ ADV = "SDK/apps/common/third_party_profile/jieli/rcsp/adv/ble_rcsp_adv.c"
 CFG = "SDK/apps/watch/user_cfg.c"
 QIX = "SDK/apps/common/third_party_profile/jieli/rcsp/qix_ota_server.c"
 CONF = "SDK/apps/common/ui/lvgl_v8/lv_conf.h"
+SDK_CONFIG = "SDK/apps/watch/board/br35/sdk_config.h"
+BOARD_CFG = "SDK/apps/watch/board/br35/board_ac707n_demo/board_ac707n_demo_cfg.h"
 MANIFEST = ".badge-system-overlay.json"
 HEADERS = {
     "badge_system_ui.h": str(Path(UI).with_name("badge_system_ui.h")),
@@ -72,6 +74,13 @@ def prepare(sdk):
     ui, adv, cfg, qix, conf = (originals[name].decode("utf8") for name in (UI, ADV, CFG, QIX, CONF))
     if any(MARK in text for text in (ui, adv, cfg)):
         raise ValueError("Partial system overlay detected")
+    # badge_safety.h hardcodes the panel TE pin and relies on the SDK arming its
+    # interrupt; refuse to build if the board configuration says otherwise.
+    for name, needle in ((SDK_CONFIG, "#define TCFG_LCD_PIN_TE IO_PORTC_00 "),
+                         (BOARD_CFG, "#define TCFG_LCD_TE_USED_PEND 1\n"),
+                         (BOARD_CFG, "#define TCFG_LCD_TE_IO      TCFG_LCD_PIN_TE\n")):
+        if needle not in (sdk / name).read_text(encoding="utf8", errors="replace").replace("\r\n", "\n"):
+            raise ValueError(f"TE pin configuration changed in {name}; review badge_safety.h")
     # Remove the exclusive black charge page; existing main/menu screens remain usable.
     start = ui.index("static void badge_charge_render(void)")
     end = ui.index("/* ---- BLE-updatable lock wallpaper", start)
