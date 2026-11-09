@@ -47,6 +47,20 @@ If a task seems to need one of these, stop and describe the change and its risk 
 - `dev` is the working branch; finished, hardware-checked branches are merged into it.
 - Never rewrite published history and never force-push.
 
+## Personal data never enters the repository
+
+This repository and its CI logs are public. Do not put any of these in files, commit
+messages, branch names, issues, PR text or workflow output:
+
+- the badge's MAC address or custom BLE name, the owner's name, e-mail or local paths;
+- wallpapers, photos, identity records and other blobs made for the owner's badge;
+- flash dumps (they contain the badge's `key_mac`), BLE captures and logs with addresses.
+
+Keep such files outside the repository and use placeholders in docs and examples
+(`ADDRESS`, `YOUR_NAME`, `/private/location/...`). Firmware stays generic: personal values
+are provisioned over BLE, never compiled in or read by CI (see `docs/badge-system.md`).
+Before committing, check the diff for anything that identifies the owner or the device.
+
 ## Commits
 
 - Do not add a `Claude-Session:` line. `Co-Authored-By:` is fine.
