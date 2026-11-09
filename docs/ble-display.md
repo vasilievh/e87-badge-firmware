@@ -116,7 +116,7 @@ It initializes a local Git working tree so the upstream patch can be applied,
 but does not synthesize or publish a vendor commit. All SDK changes stay local.
 
 On Windows without WSL, use the **Badge Display** GitHub Actions workflow. A code
-push to `feat/ble-display` in this fork, or a manual run, runs the host tests,
+push to `dev` (or a `feat/*` / `fix/*` branch cut from it) in this fork, or a manual run, runs the host tests,
 fetches the pinned SDK/toolchain and
 builds an `e87-display-v1` artifact containing the OTA image and SHA256SUMS.
 Markdown-only pushes are skipped. The artifact/image name retains `v1` for

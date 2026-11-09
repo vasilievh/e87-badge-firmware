@@ -1,6 +1,14 @@
 # jieli-ble-badge-research
 
-> **Development branch: Bluetooth Display v1/v2.** RAM-only text/color/progress cards
+> **Fork branches.** `main` mirrors upstream ElectronicCats. `dev` is the working
+> firmware branch (everything below). New work goes in `feat/*` / `fix/*` branches cut
+> from `dev` and merged back after a hardware check. `fix/windows-ota-chunk-size` is
+> the head of upstream PR #11 and must not be changed. `fix/build` and
+> `feat/ota-windows-fast` hold dev's build and Windows-OTA fixes on their own.
+> The badge this fork is developed on has no wired recovery: every image must boot, open Update and
+> accept the next OTA.
+>
+> **Bluetooth Display v1/v2.** RAM-only text/color/progress cards
 > (v2: UTF-8 with the [flash font pack](docs/flash-fonts.md)), a Python PC client,
 > native protocol tests and an E87 build workflow.
 > See [docs/ble-display.md](docs/ble-display.md) for build status and instructions.

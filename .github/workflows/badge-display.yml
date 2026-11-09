@@ -2,7 +2,8 @@ name: Badge Display
 
 on:
   push:
-    branches: [feat/ble-display]
+    # dev is the working branch; feature/fix branches cut from it also get a build.
+    branches: [dev, 'feat/**', 'fix/**']
     paths-ignore: ['**/*.md']
   pull_request:
     paths:
