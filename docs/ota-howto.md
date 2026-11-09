@@ -40,6 +40,12 @@ advertised **name** changes `OEM → custom firmware`.
   `rfkill` / `hciconfig` / `qix cleanup` / `QIX_CONNECT_VIA_DBUS=1` steps are BlueZ workarounds
   and are neither needed nor available on macOS/Windows, where bleak's native backend manages
   connection state itself. Install the client: `pip install -e tools/qix-ble`.
+- **Windows transfer mode:** each 1024-byte OTA chunk frame is sent as MTU-sized
+  Write-Without-Response packets (WinRT rejects ATT values above 512 bytes), and the badge
+  reassembles the frame; its `0xC3` ACK still keeps one chunk in flight. The previous
+  480-byte write-with-response mode took about 10 minutes per image on Windows; it remains
+  available with `QIX_OTA_SAFE=1`. `qix flash` prints the measured KB/s. Linux/macOS are
+  unchanged. Not yet measured on hardware.
 - **Third-party crypto (`jltech`):** vendored as pure Python in `tools/ufw-repack/jltech/` —
   nothing to obtain, no `crcmod`. Only `scripts/gen_chipkey_keyfile.py` still needs the external
   `jl-misctools` mirror. See [README](../README.md#dependencies).

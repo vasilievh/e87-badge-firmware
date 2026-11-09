@@ -748,10 +748,14 @@ def cmd_flash(args) -> int:
             t.drain()
             t.drain_ae02_raw()
 
+        import time as _time
+        started = _time.monotonic()
         QixUpdater(t).flash(ufw, on_progress=progress, timeout_per_chunk=args.timeout,
                             timeout_req=req_timeout,
                             on_reconnect=_link_reconnect)
-    print("\nflash OK")
+        elapsed = _time.monotonic() - started
+    print(f"\nflash OK: {len(ufw) / 1024:.0f} KB in {elapsed:.0f} s "
+          f"({len(ufw) / 1024 / max(elapsed, 0.001):.1f} KB/s)")
     _pair_stop()
     return 0
 

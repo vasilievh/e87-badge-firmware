@@ -446,18 +446,37 @@ class QixTransport:
                           frame.cmd, frame.flags, len(frame.payload), frame.payload.hex())
                 self._rx_queue.put(frame)
 
-    def send_raw(self, frame: QixFrame, response: bool = False) -> None:
+    def send_raw(self, frame: QixFrame, response: bool = False, fragment: bool = False) -> None:
         """Write FD02 con frame.encode(). No espera respuesta del state machine.
 
         `response`: True = BLE Write-With-Response (ACKed L2CAP, slower pero
         reliable). Default False (Write-Without-Response, fastest, lo que
         usa la mayoría de cmds Qix). OTA UpdateManager pasa True per community.
+
+        `fragment`: split the encoded frame into (MTU-3)-byte Write-Without-Response
+        packets. The badge reassembles Qix frames from the FD02 byte stream (1100-byte
+        buffer), so one frame may span several writes. This avoids the 512-byte ATT
+        value limit that WinRT enforces and the per-write round trip of a long write.
         """
         if not self._client or not self._client.is_connected:
             raise BleConnectionError("not connected")
         encoded = frame.encode()
-        log.debug("TX cmd=0x%02X flags=0x%02X len=%d ack=%s payload=%s",
-                  frame.cmd, frame.flags, len(frame.payload), response, frame.payload.hex())
+        log.debug("TX cmd=0x%02X flags=0x%02X len=%d ack=%s frag=%s payload=%s",
+                  frame.cmd, frame.flags, len(frame.payload), response, fragment,
+                  frame.payload.hex())
+        if fragment:
+            mtu = getattr(self._client, "mtu_size", 0) or 23
+            step = max(20, mtu - 3)
+            try:
+                for i in range(0, len(encoded), step):
+                    asyncio.run_coroutine_threadsafe(
+                        self._client.write_gatt_char(CHAR_FD02_WRITE, encoded[i:i + step],
+                                                     response=False),
+                        self._loop,
+                    ).result(timeout=5.0)
+            except (BleakError, concurrent.futures.TimeoutError) as e:
+                raise BleConnectionError(f"FD02 write failed (link drop?): {e}") from e
+            return
         fut = asyncio.run_coroutine_threadsafe(
             self._client.write_gatt_char(CHAR_FD02_WRITE, encoded, response=response),
             self._loop,
@@ -501,13 +520,15 @@ class QixTransport:
         expect_cmd: int | None = None,
         timeout: float = 5.0,
         response: bool = False,
+        fragment: bool = False,
     ) -> QixFrame:
         """Send + wait. expect_cmd=None retorna primer frame; si especificado, descarta los que no matchean.
 
         `response`: BLE Write-With-Response (ACKed). Default False. OTA path
         debe pasarlo True per community impl.
         """
-        self.send_raw(QixFrame(flags=flags, cmd=cmd, payload=payload), response=response)
+        self.send_raw(QixFrame(flags=flags, cmd=cmd, payload=payload), response=response,
+                      fragment=fragment)
         return self._wait_for_cmd(expect_cmd, timeout)
 
     def _wait_for_cmd(self, expect_cmd, timeout: float) -> QixFrame:

@@ -11,6 +11,7 @@ from __future__ import annotations
 import binascii
 import logging
 import struct
+import os
 import time
 import sys
 from dataclasses import dataclass
@@ -232,8 +233,14 @@ class QixUpdater:
         #     link-layer ACK wait, app-level flow control via cmd 0xC3 sí espera.
         #   - C2→C3 cycle: ~75ms (vs 175ms con WriteWithResponse + chunk 480).
         # Resultado: 4.5x faster end-to-end vs config conservative anterior.
-        # Keep complete Qix frames below the Windows 512-byte write limit.
-        MAX_WIRE_CHUNK = 480 if sys.platform == "win32" else 1024
+        # Windows: WinRT rejects ATT values > 512 B, and a write-with-response round
+        # trip per 480-byte chunk made a full image take ~10 min. Send each 1024-byte
+        # chunk frame as MTU-sized Write-Without-Response packets instead; the badge
+        # reassembles the frame and the 0xC3 ACK still serializes one chunk in flight.
+        # QIX_OTA_SAFE=1 restores the previous 480-byte write-with-response mode.
+        # Linux/macOS keep their validated mode (BlueZ long write, 1024 B).
+        fragmented = sys.platform == "win32" and os.environ.get("QIX_OTA_SAFE", "0") == "0"
+        MAX_WIRE_CHUNK = 480 if sys.platform == "win32" and not fragmented else 1024
         self.state = UpdaterState.SENDING_CHUNKS
         offset = offset_pos
         total = len(payload)
@@ -259,7 +266,8 @@ class QixUpdater:
                 resp = self.transport.send_command(
                     CMD_SEND_UPDATE_DATA, chunk_payload, flags=chunk_flag,
                     expect_cmd=expect, timeout=timeout_per_chunk,
-                    response=True,  # 2026-05-16 night: revertido de False — WriteWithoutResponse
+                    fragment=fragmented,
+                    response=not fragmented,  # 2026-05-16 night: revertido de False — WriteWithoutResponse
                                     # causaba BleakDBusError "Failed to initiate write" en wrapper-tampered
                                     # UFW post-REQ_UPDATE. Conservative WriteWithResponse para debugging.
                 )
