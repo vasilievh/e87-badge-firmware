@@ -12,7 +12,7 @@ spec.loader.exec_module(system)
 
 @pytest.fixture
 def sdk(tmp_path):
-    for name in (display.UI, display.QIX, system.ADV, system.CFG):
+    for name in (display.UI, display.QIX, system.ADV, system.CFG, system.CONF):
         target = tmp_path / name
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(postimage(name), encoding="utf8")
@@ -40,6 +40,11 @@ def test_layers_are_idempotent_and_validate_together(sdk):
     assert '#include "badge_wallpaper.h"' in ui and 'if (wp) {' in ui
     assert '#define QIX_STAGE_END     0x2A0000u' in (sdk / system.QIX).read_text(encoding="utf8")
     assert "badge_update_battery_gate()) { return; }   /* OTA" in ui
+    assert '#include "badge_fonts.h"' in ui and "badge_fonts_init();" in ui
+    assert ui.index('#include "badge_fonts.h"') < ui.index('#include "badge_display_ui.h"')
+    conf = (sdk / system.CONF).read_text(encoding="utf8")
+    assert "#define LV_FONT_MONTSERRAT_36 0   /* BADGE_SYSTEM_OVERLAY_V1 */ /* titles use the flash font pack */\n" in conf
+    assert "#define LV_FONT_MONTSERRAT_36 1" not in conf
 
 
 def test_mismatched_advertisement_does_not_partially_write(sdk):
@@ -50,6 +55,14 @@ def test_mismatched_advertisement_does_not_partially_write(sdk):
         system.prepare(sdk)
     assert (sdk / system.UI).read_bytes() == before
     assert not (sdk / system.MANIFEST).exists()
+
+
+def test_check_rejects_font_config_drift(sdk):
+    system.prepare(sdk)
+    conf = sdk / system.CONF
+    conf.write_text(conf.read_text(encoding="utf8").replace("MONTSERRAT_36 0", "MONTSERRAT_36 1", 1), encoding="utf8")
+    with pytest.raises(ValueError, match="outside"):
+        system.check(sdk)
 
 
 def test_check_rejects_identity_source_drift(sdk):

@@ -34,14 +34,15 @@ The new **Bluetooth Display** menu item presents a 360x360 card with a title,
 body, footer, background/text/accent colors and an optional 0..100 progress bar.
 The three text limits are 48, 96 and 64 bytes. Long text is clipped with dots;
 the byte limits are transport limits, not a guarantee every character fits.
-Uppercase titles use the existing 36px font; lowercase titles fall back to 14px
-because upstream's large font has only glyphs 32..90. The progress indicator uses
+Without the system overlay, uppercase titles use the existing 36px font and
+lowercase titles fall back to 14px because upstream's large font has only glyphs
+32..90. With it, titles use the [flash font pack](flash-fonts.md) (36/24/20px by fit). The progress indicator uses
 basic objects, since upstream compiles out the LVGL bar widget.
 Updates replace one card in RAM. No filesystem, gallery or flash writes occur.
 The existing Mouse, Scanner, Spoofing, Settings and Update tools remain in the menu.
 
 Version 1 deliberately accepts printable ASCII, plus newlines in the body.
-The embedded fonts do not yet promise German umlauts or Cyrillic. Unicode fonts,
+The flash font pack contains German umlauts and Cyrillic, but v1 still sends ASCII only. Unicode fonts,
 images, drawing primitives and touch events are subsequent protocol extensions.
 
 BLE is enabled only while Display is open; it advertises as **EC-BADGE**.

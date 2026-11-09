@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Apply battery/home status and optional device-local identity after Display v1.
+"""Apply battery status, device-local identity, wallpaper and font pack after Display v1.
 
 No personal settings/assets are read by this build step. Device provisioning is
 separate. Exact anchors and a manifest reject source drift before any writes.
@@ -17,12 +17,14 @@ UI = "SDK/apps/common/ui/lvgl_v8/lvgl_main.c"
 ADV = "SDK/apps/common/third_party_profile/jieli/rcsp/adv/ble_rcsp_adv.c"
 CFG = "SDK/apps/watch/user_cfg.c"
 QIX = "SDK/apps/common/third_party_profile/jieli/rcsp/qix_ota_server.c"
+CONF = "SDK/apps/common/ui/lvgl_v8/lv_conf.h"
 MANIFEST = ".badge-system-overlay.json"
 HEADERS = {
     "badge_system_ui.h": str(Path(UI).with_name("badge_system_ui.h")),
     "badge_power_status.h": str(Path(UI).with_name("badge_power_status.h")),
     "badge_identity.h": str(Path(CFG).with_name("badge_identity.h")),
     "badge_wallpaper.h": str(Path(UI).with_name("badge_wallpaper.h")),
+    "badge_fonts.h": str(Path(UI).with_name("badge_fonts.h")),
 }
 MARK = "/* BADGE_SYSTEM_OVERLAY_V1 */"
 
@@ -60,8 +62,8 @@ def prepare(sdk):
     display = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(display)
     display.check(sdk)
-    originals = {name: (sdk / name).read_bytes() for name in (UI, ADV, CFG, QIX)}
-    ui, adv, cfg, qix = (originals[name].decode("utf8") for name in (UI, ADV, CFG, QIX))
+    originals = {name: (sdk / name).read_bytes() for name in (UI, ADV, CFG, QIX, CONF)}
+    ui, adv, cfg, qix, conf = (originals[name].decode("utf8") for name in (UI, ADV, CFG, QIX, CONF))
     if any(MARK in text for text in (ui, adv, cfg)):
         raise ValueError("Partial system overlay detected")
     # Remove the exclusive black charge page; existing main/menu screens remain usable.
@@ -94,6 +96,7 @@ def prepare(sdk):
     ui = replace(ui, 'if (badge_ble_battery_gate()) { return; }   /* low battery gate: warn instead of entering OTA mode */',
                  'if (badge_update_battery_gate()) { return; }   /* OTA remains available on USB */')
     ui = replace(ui, '    /* Hand the hardware buttons to LVGL:',
+                 '    badge_fonts_init();   /* optional flash font pack; built-in 14px otherwise */\n'
                  '    badge_status_build();\n\n    /* Hand the hardware buttons to LVGL:')
     ui = replace(ui, '            extern volatile u8 g_badge_adkey_kv;\n',
                  '            extern volatile u8 g_badge_adkey_kv;\n            badge_system_poll();\n')
@@ -107,20 +110,24 @@ def prepare(sdk):
                  '/* Wallpaper is device-local data, not an embedded application bitmap. */')
     start = ui.index('/* ---- BLE-updatable lock wallpaper')
     end = ui.index('/* ---- Lock / screensaver: display + touch OFF', start)
-    ui = ui[:start] + '#include "badge_wallpaper.h"\n\n' + ui[end:]
+    ui = ui[:start] + '#include "badge_wallpaper.h"\n#include "badge_fonts.h"\n\n' + ui[end:]
     ui = replace(ui, '        const lv_img_dsc_t *wp = lock_img_resolve();\n',
                  '        const lv_img_dsc_t *wp = lock_img_resolve();\n        if (wp) {\n')
     ui = replace(ui, '        lv_obj_add_flag(img, LV_OBJ_FLAG_GESTURE_BUBBLE);\n',
                  '        lv_obj_add_flag(img, LV_OBJ_FLAG_GESTURE_BUBBLE);\n        }\n')
     # Preserve the full-resolution wallpaper sector range during staging erase.
     qix = replace(qix, '#define QIX_STAGE_END     0x3BE000u', '#define QIX_STAGE_END     0x2A0000u')
+    # Titles now come from the device-local font pack; the charge page that also
+    # used the built-in 36px font was removed above. This frees ~14 KB of code.
+    conf = replace(conf, '#define LV_FONT_MONTSERRAT_36 1   /* badge charge screen: real 36px thick font (glyphs stripped to ASCII 32..90) */',
+                   '#define LV_FONT_MONTSERRAT_36 0   ' + MARK + ' /* titles use the flash font pack */')
     # The label uses a fixed width; scan response limits remain below 31 bytes.
     cfg = '#ifdef CONFIG_BADGE_MENU\n' + MARK + '\n#include "badge_identity.h"\n#endif\n' + cfg
     cfg = replace(cfg, '    sprintf(bt_cfg.edr_name, "%s", TCFG_JL_WALLPAPER_ADV_NAME);',
                   '    sprintf(bt_cfg.edr_name, "%s", TCFG_JL_WALLPAPER_ADV_NAME);\n#ifdef CONFIG_BADGE_MENU\n    badge_identity_load((char *)bt_cfg.edr_name);\n#endif')
     adv = replace(adv, '        const char *nm = "EC-MOUSE";',
                   '        ' + MARK + '\n        extern const char *badge_mouse_local_name(void);\n        const char *nm = badge_mouse_local_name();')
-    output = {UI: ui.encode(), ADV: adv.encode(), CFG: cfg.encode(), QIX: qix.encode()}
+    output = {UI: ui.encode(), ADV: adv.encode(), CFG: cfg.encode(), QIX: qix.encode(), CONF: conf.encode()}
     output.update({target: (ROOT / "firmware/display" / name).read_bytes() for name, target in HEADERS.items()})
     record = {
         "display_manifest_sha256": digest((sdk / ".badge-display-overlay.json").read_bytes()),
@@ -130,7 +137,7 @@ def prepare(sdk):
     for name, data in output.items():
         (sdk / name).write_bytes(data)
     (sdk / MANIFEST).write_text(json.dumps(record, indent=2), encoding="utf8")
-    print("System overlay applied; identity and wallpaper are provisioned separately")
+    print("System overlay applied; identity, wallpaper and fonts are provisioned separately")
 
 
 if __name__ == "__main__":

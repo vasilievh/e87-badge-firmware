@@ -64,6 +64,9 @@ remain usable. Use `tools/make_lockimg.py`; see `lock-image.md`.
 An ordinary fixed-geometry app-only OTA preserves these records. Full
 resource/flash replacements may not.
 
+The optional font pack lives at `0x310000..0x33E000` and replaces the built-in
+36px font in code; see [flash-fonts.md](flash-fonts.md).
+
 ```sh
 python tools/make_badge_identity.py YOUR_NAME /private/location/identity.bin
 qix rawflash ADDRESS /private/location/identity.bin --addr 0x30B000 --verify --reboot

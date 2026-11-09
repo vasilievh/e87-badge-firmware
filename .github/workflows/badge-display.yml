@@ -11,6 +11,8 @@ on:
       - 'scripts/*display*'
       - 'scripts/import-sdk.py'
       - 'scripts/prepare-badge-system.py'
+      - 'tools/make_badge_fonts.py'
+      - 'tools/fonts/**'
       - 'tests/**'
       - '.github/workflows/badge-display.yml'
   workflow_dispatch:
@@ -30,9 +32,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: python -m pip install -e 'tools/qix-ble[dev]'
+      - run: python -m pip install -e 'tools/qix-ble[dev]' pillow fonttools
       - run: >-
-          python -m pytest -q tools/qix-ble/tests/test_display.py
+          python -m pytest -q tests/test_font_pack.py tools/qix-ble/tests/test_display.py
           tools/qix-ble/tests/test_windows_ota_size.py
           tools/qix-ble/tests/test_transport_write_timeout.py
           tools/qix-ble/tests/test_update_manager.py

@@ -45,15 +45,22 @@ int badge_display_command(u8 cmd, const u8 *p, u16 n)
     return 1;
 }
 
+#ifndef BADGE_TITLE_FONT
+/* Upstream strips the 36px font to ASCII 32..90. Fall back to the complete
+ * 14px ASCII font for lowercase/punctuation rather than losing glyphs.
+ * The system overlay's flash font pack (badge_fonts.h) replaces this. */
+static const lv_font_t *bd_title_font(const char *title)
+{
+    for (; *title; ++title) if ((unsigned char)*title > 90) return &lv_font_montserrat_14;
+    return &lv_font_montserrat_36;
+}
+#endif
+
 static void bd_render(const bd_card *c)
 {
     lv_obj_t *labels[3] = {bd_title, bd_body, bd_footer};
     int i;
-    /* Upstream strips the 36px font to ASCII 32..90. Fall back to the complete
-     * 14px ASCII font for lowercase/punctuation rather than losing glyphs. */
-    int large = 1;
-    for (i = 0; c->title[i]; ++i) if ((unsigned char)c->title[i] > 90) large = 0;
-    lv_obj_set_style_text_font(bd_title, large ? &lv_font_montserrat_36 : &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(bd_title, bd_title_font(c->title), 0);
     lv_obj_set_style_bg_color(bd_screen, lv_color_hex(c->background), 0);
     for (i = 0; i < 3; ++i)
         lv_obj_set_style_text_color(labels[i], lv_color_hex(c->foreground), 0);
@@ -122,8 +129,7 @@ static void display_open_cb(lv_event_t *e)
     if (!bd_screen) {
         bd_screen = lv_obj_create(NULL);
         lv_obj_clear_flag(bd_screen, LV_OBJ_FLAG_SCROLLABLE);
-        bd_title = bd_label(66, 72);
-        lv_obj_set_style_text_font(bd_title, &lv_font_montserrat_36, 0);
+        bd_title = bd_label(66, 72); /* bd_render below selects the title font. */
         bd_body = bd_label(148, 56); bd_footer = bd_label(246, 44);
         /* Basic objects: upstream disables LV_USE_BAR to save code space. */
         bd_bar = lv_obj_create(bd_screen);
