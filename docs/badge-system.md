@@ -1,7 +1,8 @@
 # Battery status and device-local personalization
 
-Development overlay. The current streaming wallpaper changes are not yet
-hardware-tested. Apply after `prepare-display.py`:
+Development overlay. The owner confirmed on 2026-11-09 that the menu battery
+status and the 360x360 streaming wallpaper work on the physical badge, and a
+device-local name is in use. Apply after `prepare-display.py`:
 
 ```sh
 python scripts/prepare-badge-system.py

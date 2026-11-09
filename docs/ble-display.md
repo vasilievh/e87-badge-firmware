@@ -10,6 +10,13 @@ This hardware check covers one card from a Windows host. Repeated updates,
 reconnects, leaving/reopening Display, CLEAR, long-running operation and the
 existing tools after this update have not yet been checked on hardware.
 
+Display v2: build `468a76e` ([Actions run 42554935192](https://github.com/vasilievh/jieli-ble-badge-research/actions/runs/42554935192),
+application 936,544 bytes) was flashed from Windows on 2026-11-09 and the owner
+confirmed on the physical screen that, with the font pack installed, the v2 demo
+runs and shows Cyrillic, German letters and punctuation («Привет!», «Größe: 5 °C —
+«ёлка»»), and custom cards work. Error paths, long-running use and old-client
+compatibility have only been tested on the host.
+
 Reference build: source commit `6fc8828c163b1ab195a5d6b7a34846a3fae2dbef`,
 [GitHub Actions run 42529018450](https://github.com/vasilievh/jieli-ble-badge-research/actions/runs/42529018450).
 The image is 1,079,363 bytes, SHA256
@@ -46,7 +53,7 @@ UTF-8 when the [flash font pack](flash-fonts.md) is installed: every character m
 exist in the pack (default: ASCII, German letters, Russian Cyrillic, common
 punctuation), and body/footer then use the pack's 14px font. Without a pack, v2
 accepts ASCII only. Images, drawing primitives and touch events are later extensions.
-Display v2 is not yet tested on hardware.
+Display v2 is confirmed on hardware (see status above).
 
 BLE is enabled only while Display is open; it advertises as **EC-BADGE**.
 Button 1 returns to the menu and disconnects. With the optional
