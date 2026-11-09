@@ -6,6 +6,7 @@ static lv_obj_t *badge_menu_power;
 static u32 badge_power_poll_ms;
 static char badge_power_last_text[24];
 static unsigned badge_power_last_color;
+#include "badge_idle_ui.h"
 
 static u8 badge_usb_online(void)
 {
@@ -28,6 +29,7 @@ static void badge_system_poll(void)
      * application flag alone was not sufficient to show charge UI on all units. */
     badge_power_sample(&badge_power, get_charge_online_flag() ||
                        get_ldo5v_online_hw() || get_lvcmp_det());
+    badge_idle_sample();
     if (g_badge_locked || !badge_menu_power) return;
     color = badge_power_text(text, sizeof(text), get_vbat_percent(),
                              badge_usb_online(), get_charge_full_flag());
@@ -55,6 +57,7 @@ static lv_obj_t *badge_power_label(lv_obj_t *parent)
 static void badge_status_build(void)
 {
     badge_menu_power = badge_power_label(g_menu_scr);
+    badge_idle_init();
     badge_system_poll();
 }
 

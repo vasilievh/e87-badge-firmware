@@ -22,7 +22,7 @@ with tempfile.TemporaryDirectory(prefix="badge-display-") as folder:
             sys.stderr.write(error.stderr.decode(errors="replace"))
             raise
         print("fonts: Pillow/fontTools missing; generated-pack checks skipped")
-    for source in ("display_native.c", "system_native.c", "wallpaper_native.c", "fonts_native.c"):
+    for source in ("display_native.c", "system_native.c", "wallpaper_native.c", "fonts_native.c", "idle_native.c"):
         exe = Path(folder) / (source + (".exe" if os.name == "nt" else ".out"))
         subprocess.run(command + ["-std=c99", "-Wall", "-Wextra", "-Werror", "-Wno-unused-parameter",
                        "-I", str(root / "firmware/display"), str(root / "tests" / source),

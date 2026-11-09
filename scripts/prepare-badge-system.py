@@ -18,6 +18,8 @@ ADV = "SDK/apps/common/third_party_profile/jieli/rcsp/adv/ble_rcsp_adv.c"
 CFG = "SDK/apps/watch/user_cfg.c"
 QIX = "SDK/apps/common/third_party_profile/jieli/rcsp/qix_ota_server.c"
 CONF = "SDK/apps/common/ui/lvgl_v8/lv_conf.h"
+BOARD = "SDK/apps/watch/board/br35/board_ac707n_demo/board_ac707n_demo.c"
+ADKEY = "SDK/apps/common/device/key/adkey.c"
 MANIFEST = ".badge-system-overlay.json"
 HEADERS = {
     "badge_system_ui.h": str(Path(UI).with_name("badge_system_ui.h")),
@@ -25,8 +27,16 @@ HEADERS = {
     "badge_identity.h": str(Path(CFG).with_name("badge_identity.h")),
     "badge_wallpaper.h": str(Path(UI).with_name("badge_wallpaper.h")),
     "badge_fonts.h": str(Path(UI).with_name("badge_fonts.h")),
+    "badge_idle_ui.h": str(Path(UI).with_name("badge_idle_ui.h")),
+    "badge_idle_status.h": str(Path(UI).with_name("badge_idle_status.h")),
+    "badge_idle_event.h": str(Path(UI).with_name("badge_idle_event.h")),
 }
 MARK = "/* BADGE_SYSTEM_OVERLAY_V1 */"
+
+
+def header_files():
+    yield from HEADERS.items()
+    yield "badge_idle_event.h", str(Path(BOARD).with_name("badge_idle_event.h"))
 
 
 def digest(data):
@@ -47,7 +57,7 @@ def check(sdk):
     for name, expected in record["files"].items():
         if digest((sdk / name).read_bytes()) != expected:
             raise ValueError(f"SDK system source changed outside overlay: {name}")
-    for name, target in HEADERS.items():
+    for name, target in header_files():
         if digest((ROOT / "firmware/display" / name).read_bytes()) != record["files"][target]:
             raise ValueError("System header changed; recreate the SDK and reapply overlays")
     return record
@@ -62,8 +72,9 @@ def prepare(sdk):
     display = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(display)
     display.check(sdk)
-    originals = {name: (sdk / name).read_bytes() for name in (UI, ADV, CFG, QIX, CONF)}
-    ui, adv, cfg, qix, conf = (originals[name].decode("utf8") for name in (UI, ADV, CFG, QIX, CONF))
+    originals = {name: (sdk / name).read_bytes() for name in (UI, ADV, CFG, QIX, CONF, BOARD, ADKEY)}
+    ui, adv, cfg, qix, conf, board, adkey = (originals[name].decode("utf8").replace("\r\n", "\n")
+                                           for name in (UI, ADV, CFG, QIX, CONF, BOARD, ADKEY))
     if any(MARK in text for text in (ui, adv, cfg)):
         raise ValueError("Partial system overlay detected")
     # Remove the exclusive black charge page; existing main/menu screens remain usable.
@@ -100,6 +111,21 @@ def prepare(sdk):
                  '    badge_status_build();\n\n    /* Hand the hardware buttons to LVGL:')
     ui = replace(ui, '            extern volatile u8 g_badge_adkey_kv;\n',
                  '            extern volatile u8 g_badge_adkey_kv;\n            badge_system_poll();\n')
+    ui = replace(ui, '    g_badge_locked = 1;\n',
+                 '    badge_idle_prepare_lock();\n    g_badge_locked = 1;\n    badge_idle_enter();\n')
+    ui = replace(ui, '                /* Suspended (black): any key press wakes to the lock image. */\n'
+                     '                if (g_badge_adkey_kv != NO_KEY) {',
+                 '                /* Retain a short press even if released before this task ran. */\n'
+                 '                if (badge_idle_take_key_wake() || g_badge_adkey_kv != NO_KEY) {')
+    ui = replace(ui, '    lcd_sleep_ctrl(1);            /* backlight 0 + panel to sleep + power down */',
+                 '    lcd_sleep_ctrl(1);            /* backlight 0 + panel to sleep + power down */\n'
+                 '    badge_idle_release_clock();   /* panel is off; release ui_show max-frequency lock */')
+    ui = replace(ui, '    lcd_sleep_ctrl(0);            /* powers the panel back on (kicks off the re-init task) */',
+                 '    badge_idle_exit();             /* sample BEFORE the display/radio load */\n'
+                 '    badge_idle_restore_clock();    /* full clock before LCD/GPU re-init */\n'
+                 '    lcd_sleep_ctrl(0);            /* powers the panel back on (kicks off the re-init task) */')
+    ui = replace(ui, '                os_time_dly(3);   /* ~30 ms poll; CPU mostly idle while locked */',
+                 '                if (g_badge_locked) badge_idle_wait(); /* key event or 1 s power tick */')
     ui = replace(ui, '                extern u8 get_charge_online_flag(void);\n', '')
     ui = replace(ui, 'u8 chg_now = get_charge_online_flag();', 'u8 chg_now = badge_usb_online();')
     start = ui.index('            while (g_charge_active) {')
@@ -127,8 +153,45 @@ def prepare(sdk):
                   '    sprintf(bt_cfg.edr_name, "%s", TCFG_JL_WALLPAPER_ADV_NAME);\n#ifdef CONFIG_BADGE_MENU\n    badge_identity_load((char *)bt_cfg.edr_name);\n#endif')
     adv = replace(adv, '        const char *nm = "EC-MOUSE";',
                   '        ' + MARK + '\n        extern const char *badge_mouse_local_name(void);\n        const char *nm = badge_mouse_local_name();')
-    output = {UI: ui.encode(), ADV: adv.encode(), CFG: cfg.encode(), QIX: qix.encode(), CONF: conf.encode()}
-    output.update({target: (ROOT / "firmware/display" / name).read_bytes() for name, target in HEADERS.items()})
+    # E87 only (the Display build already rejects DG01). Keep the original ADKEY
+    # scanner/debounce; post only on transitions so a short tap wakes a blocked UI.
+    adkey = replace(adkey, '        g_badge_adkey_kv = kv;',
+                    '        extern void badge_idle_key_changed(void);\n'
+                    '        if (g_badge_adkey_kv != kv) {\n'
+                    '            g_badge_adkey_kv = kv;\n'
+                    '            badge_idle_key_changed();\n'
+                    '        }', count=2)
+    board = replace(board, 'static volatile u8 g_tp_reinit_req = 0;   /* wake path asks the poll task to re-init */',
+                    'static volatile u8 g_tp_reinit_req = 0;   /* wake path asks the poll task to re-init */\n'
+                    '#include "badge_idle_event.h"\nstatic badge_idle_event badge_touch_event;')
+    board = replace(board, '    g_axs_want = en ? 1 : 0;',
+                    '    u8 was_enabled = g_axs_want;\n    g_axs_want = en ? 1 : 0;')
+    board = replace(board, '        g_tp_reinit_req = 1;    /* the poll task owns the bus; ask it to re-init */',
+                    '        g_tp_reinit_req = 1;    /* the poll task owns the bus; ask it to re-init */\n'
+                    '        if (!was_enabled) badge_idle_event_signal(&badge_touch_event);')
+    board = replace(board, '        if (g_tp_reinit_req && g_axs_want) {',
+                    '        if (!g_axs_want) {\n'
+                    '            g_tp_cdown = 0;\n'
+                    '            badge_idle_event_wait(&badge_touch_event, 0); /* wait until enabled */\n'
+                    '            continue;\n'
+                    '        }\n        if (g_tp_reinit_req && g_axs_want) {')
+    board = replace(board, '    task_create(axs_poll_task, NULL, "axs_poll");',
+                    '    badge_idle_event_init(&badge_touch_event);\n'
+                    '    task_create(axs_poll_task, NULL, "axs_poll");')
+    qix = replace(qix, '    extern volatile u8 g_badge_display_mode;\n',
+                  '    extern int badge_power_command(u8 cmd, const u8 *p, u16 n);\n'
+                  '    if (cmd == 0x92) { badge_power_command(cmd, p, plen); return; }\n'
+                  '    extern volatile u8 g_badge_display_mode;\n')
+    qix += '''\n#ifdef CONFIG_BADGE_MENU
+void badge_power_reply(const u8 *data, u16 len)
+{
+    qix_send_frame(0x93, data, len);
+}
+#endif
+'''
+    output = {UI: ui.encode(), ADV: adv.encode(), CFG: cfg.encode(), QIX: qix.encode(),
+              CONF: conf.encode(), BOARD: board.encode(), ADKEY: adkey.encode()}
+    output.update({target: (ROOT / "firmware/display" / name).read_bytes() for name, target in header_files()})
     record = {
         "display_manifest_sha256": digest((sdk / ".badge-display-overlay.json").read_bytes()),
         "base_files": {name: digest(data) for name, data in originals.items()},

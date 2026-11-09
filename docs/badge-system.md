@@ -1,5 +1,8 @@
 # Battery status and device-local personalization
 
+Lock power investigation and read-only diagnostics: [idle-power.md](idle-power.md).
+Those changes are not yet built/flashed or validated for battery life.
+
 Development overlay. The owner confirmed on 2026-11-09 that the menu battery
 status and the 360x360 streaming wallpaper work on the physical badge, and a
 device-local name is in use. Apply after `prepare-display.py`:
@@ -31,7 +34,8 @@ five-second timeout. It does not add automatic retries of staging initialization
 
 The menu shows the SDK battery percentage and BATTERY, CHARGING or FULL. The home
 screen is reserved for the wallpaper. Charger presence combines the SDK flag with the LDO5V/LVCMP hardware
-detectors, sampled every 100 ms with three matching samples per transition.
+detectors, sampled every 100 ms while awake with three matching samples per transition.
+The Lock power changes service this check once per second while locked (or sooner on a key event).
 FULL comes from the SDK charge-full event; this is not a current measurement.
 The percentage is the SDK's voltage-based estimate, not a calibrated fuel gauge.
 
