@@ -16,6 +16,12 @@ static void badge_idle_event_signal(badge_idle_event *event)
 {
     if (event->ready) os_sem_post(&event->sem);
 }
+/* Drop notifications left from an earlier lock (several presses post several
+ * tokens; one wait consumes one). SDK pattern: os_sem_set(&sem, 0). */
+static void badge_idle_event_clear(badge_idle_event *event)
+{
+    if (event->ready) os_sem_set(&event->sem, 0);
+}
 static void badge_idle_event_wait(badge_idle_event *event, unsigned ticks)
 {
     if (event->ready) os_sem_pend(&event->sem, ticks);

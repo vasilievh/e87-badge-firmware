@@ -23,6 +23,7 @@ volatile u8 g_badge_adkey_kv = 0xff;
 static int os_sem_create(OS_SEM *s, int value)
 { s->count = (unsigned)value; return create_fail ? -1 : 0; }
 static int os_sem_post(OS_SEM *s) { ++s->count; return 0; }
+static int os_sem_set(OS_SEM *s, u16 cnt) { assert(!critical); s->count = cnt; return 0; }
 static int os_sem_pend(OS_SEM *s, int timeout)
 {
     assert(!critical); ++pend_calls; pend_ticks = (unsigned)timeout;
@@ -77,6 +78,14 @@ int main(void)
     assert(!(badge_idle.flags & BI_LOCKED) && (badge_idle.flags & BI_LAST_VALID));
     sys_hz = 240000000; g_badge_locked = 0;
     badge_key_wake = 1; badge_idle_prepare_lock(); assert(!badge_idle_take_key_wake());
+    /* Several presses in one lock leave several tokens; the next lock drains them,
+     * so its first wait blocks instead of returning at once. */
+    g_badge_locked = 1; g_badge_adkey_kv = 1;
+    badge_idle_key_changed(); badge_idle_key_changed(); badge_idle_key_changed();
+    g_badge_adkey_kv = NO_KEY; g_badge_locked = 0;
+    assert(badge_key_event.sem.count == 3);
+    badge_idle_prepare_lock(); assert(!badge_key_event.sem.count);
+    badge_key_wake = 0;
     g_ble_want_on = usb = full = 1; badge_idle_sample();
     for (unsigned page = 0; page < 4; ++page) {
         request[3] = (u8)page;

@@ -37,7 +37,9 @@ The UI previously polled every ~30 ms while locked; it now waits on a semaphore
 for a debounced key transition, with a 1-second timeout for USB/power sampling.
 The original ADKEY scanner and debounce are retained. A post immediately before
 the wait is retained by the semaphore, so a short press is not dependent on the
-1-second timeout. The touch task previously woke every ~20 ms even when disabled;
+1-second timeout. Each press while locked posts once and each wait takes one, so
+several presses leave extra posts; entering Lock drains them (`os_sem_set(&sem, 0)`,
+as the SDK does) so the next lock's first wait still blocks. The touch task previously woke every ~20 ms even when disabled;
 it now waits until the UI enables it, then performs its existing re-init.
 If semaphore creation fails, bounded polling remains available.
 

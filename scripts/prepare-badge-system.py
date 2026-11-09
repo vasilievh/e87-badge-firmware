@@ -127,9 +127,11 @@ def prepare(sdk):
     ui = replace(ui, '            extern volatile u8 g_badge_adkey_kv;\n',
                  '            extern volatile u8 g_badge_adkey_kv;\n            badge_system_poll();\n'
                  '            badge_safety_ui_tick();   /* UI liveness watchdog */\n')
-    # Watchdog starts with the badge main loop (see badge_safety.h).
-    ui = replace(ui, '        u8 upd_shown = 0xff;\n',
-                 '        u8 upd_shown = 0xff;\n        badge_safety_start();\n')
+    # Watchdog starts before the boot-time screen build and suspend (badge_safety.h):
+    # badge_lock_enter() there can wait on the LCD init semaphore without a timeout.
+    ui = replace(ui, '    /* Badge tool UI: build all screens, then boot SUSPENDED',
+                 '    badge_safety_start();   /* UI watchdog before the boot-time suspend */\n'
+                 '    /* Badge tool UI: build all screens, then boot SUSPENDED')
     ui = replace(ui, '    g_badge_locked = 1;\n',
                  '    badge_idle_prepare_lock();\n    g_badge_locked = 1;\n    badge_idle_enter();\n')
     ui = replace(ui, '                /* Suspended (black): any key press wakes to the lock image. */\n'

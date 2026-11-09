@@ -50,7 +50,8 @@ static void badge_idle_prepare_lock(void)
 {
     /* Called BEFORE g_badge_locked=1. Ignore the key that entered Lock and any
      * stale notification from a previous LCD re-init; new presses are retained. */
-    OS_SR_ALLOC(); OS_ENTER_CRITICAL(); badge_key_wake = 0; OS_EXIT_CRITICAL();
+    badge_idle_event_clear(&badge_key_event); /* nobody posts while unlocked */
+    { OS_SR_ALLOC(); OS_ENTER_CRITICAL(); badge_key_wake = 0; OS_EXIT_CRITICAL(); }
 }
 static int badge_idle_take_key_wake(void)
 {

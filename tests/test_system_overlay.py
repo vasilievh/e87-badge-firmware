@@ -62,6 +62,8 @@ def test_layers_are_idempotent_and_validate_together(sdk):
     assert ui.index('volatile u8 g_badge_update_active;') < ui.index('#include "badge_safety.h"')
     assert ui.count('badge_safety_ui_tick();') == 1 and ui.count('badge_safety_start();') == 1
     assert ui.index('badge_safety_start();') < ui.index('badge_safety_ui_tick();')
+    gui = ui[ui.index('void jl_gui_init(void)'):]
+    assert gui.index('badge_safety_start();') < gui.index('badge_menu_build();') < gui.index('badge_lock_enter();')
     assert 'if (cmd == 0x97) { badge_safety_command(cmd, p, plen); return; }' in qix
     assert qix.index('cmd == 0x97') < qix.index('if (g_badge_display_mode)')
     assert 'qix_send_frame(0x98, data, len);' in qix
