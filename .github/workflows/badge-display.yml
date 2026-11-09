@@ -47,6 +47,8 @@ jobs:
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.repository_owner == 'vasilievh')
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    env:
+      SDK_COMMIT: d0167685d032d745d88fe50233302edd46941622
     steps:
       - uses: actions/checkout@v4
         with:
@@ -54,13 +56,34 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      # GitHub runners are fresh VMs, so without a cache every run re-downloads
+      # the vendor SDK. The key covers the pinned commit and the importer (which
+      # holds the expected sha256), so a pin bump automatically misses the cache.
+      # actions/cache only saves after a successful job, so a zip that failed
+      # checksum verification never lands in the cache.
+      - name: Restore pinned SDK archive from cache
+        id: sdk-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/badge-sdk/e87-sdk.zip
+          key: e87-sdk-${{ env.SDK_COMMIT }}-${{ hashFiles('scripts/import-sdk.py') }}
       - name: Download pinned SDK source archive
+        if: steps.sdk-cache.outputs.cache-hit != 'true'
         run: |
+          mkdir -p ~/.cache/badge-sdk
           curl --fail --location --connect-timeout 20 --max-time 900 --retry 2 --retry-delay 5 \
-            'https://gitlab.zh-jieli.com/api/v4/projects/1463/repository/archive.zip?sha=d0167685d032d745d88fe50233302edd46941622' \
-            --output "$RUNNER_TEMP/e87-sdk.zip"
+            "https://gitlab.zh-jieli.com/api/v4/projects/1463/repository/archive.zip?sha=${SDK_COMMIT}" \
+            --output ~/.cache/badge-sdk/e87-sdk.zip.partial
+          mv ~/.cache/badge-sdk/e87-sdk.zip.partial ~/.cache/badge-sdk/e87-sdk.zip
       - name: Verify and import SDK archive
-        run: python scripts/import-sdk.py "$RUNNER_TEMP/e87-sdk.zip"
+        run: python scripts/import-sdk.py ~/.cache/badge-sdk/e87-sdk.zip
+      # setup-jieli-toolchain.sh already skips the download when the archive is
+      # in tools/jieli-toolchain/.cache and still checks its sha256.
+      - name: Restore compiler archive from cache
+        uses: actions/cache@v4
+        with:
+          path: tools/jieli-toolchain/.cache
+          key: jieli-toolchain-${{ hashFiles('scripts/setup-jieli-toolchain.sh') }}
       - name: Install validated compiler
         run: bash scripts/setup-jieli-toolchain.sh
       - name: Fetch pinned SDK and apply upstream badge patch
