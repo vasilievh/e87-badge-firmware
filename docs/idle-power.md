@@ -108,7 +108,7 @@ fixtures. That validates source integration, not target compilation.
 Apply the updated Display/system overlays to a **fresh pinned SDK** for a full
 JieLi build. An old installed system overlay is deliberately rejected by its
 manifest rather than silently mixed with these headers. The resource catalogue
-and bounded BLE writes from `feat/ble-display` (`6d906f1`) are now integrated into
+and bounded BLE writes from `dev`, formerly `feat/ble-display` (`6d906f1`), are now integrated into
 this power branch. The shared overlay installs and validates both resource and
 idle headers, and the native runner includes both harnesses. There is no new
 battery-life result or application-size measurement for this code yet.
