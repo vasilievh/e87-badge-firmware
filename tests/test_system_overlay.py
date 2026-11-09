@@ -50,6 +50,15 @@ def test_layers_are_idempotent_and_validate_together(sdk):
         assert (sdk / target).read_bytes() == (ROOT / 'firmware/display/badge_resources.h').read_bytes()
     assert "badge_update_battery_gate()) { return; }   /* OTA" in ui
     assert '#include "badge_fonts.h"' in ui and "badge_fonts_init();" in ui
+    assert '#define BADGE_SAFETY_IMPLEMENTATION\n#include "badge_safety.h"' in ui
+    assert ui.index('g_on_update_scr;') < ui.index('#include "badge_safety.h"')
+    assert ui.index('volatile u8 g_badge_update_active;') < ui.index('#include "badge_safety.h"')
+    assert ui.count('badge_safety_ui_tick();') == 1 and ui.count('badge_safety_start();') == 1
+    assert ui.index('badge_safety_start();') < ui.index('badge_safety_ui_tick();')
+    assert 'if (cmd == 0x97) { badge_safety_command(cmd, p, plen); return; }' in qix
+    assert qix.index('cmd == 0x97') < qix.index('if (g_badge_display_mode)')
+    assert 'qix_send_frame(0x98, data, len);' in qix
+    assert (sdk / system.HEADERS['badge_safety.h']).read_bytes() == (ROOT / 'firmware/display/badge_safety.h').read_bytes()
     assert ui.index('#include "badge_fonts.h"') < ui.index('#include "badge_display_ui.h"')
     conf = (sdk / system.CONF).read_text(encoding="utf8")
     assert "#define LV_FONT_MONTSERRAT_36 0   /* BADGE_SYSTEM_OVERLAY_V1 */ /* titles use the flash font pack */\n" in conf

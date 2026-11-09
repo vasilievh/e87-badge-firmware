@@ -25,6 +25,7 @@ HEADERS = {
     "badge_identity.h": str(Path(CFG).with_name("badge_identity.h")),
     "badge_wallpaper.h": str(Path(UI).with_name("badge_wallpaper.h")),
     "badge_fonts.h": str(Path(UI).with_name("badge_fonts.h")),
+    "badge_safety.h": str(Path(UI).with_name("badge_safety.h")),
     "badge_resources_wire.h": str(Path(QIX).with_name("badge_resources_wire.h")),
 }
 RESOURCE_TARGETS = [str(Path(name).with_name("badge_resources.h")) for name in (UI, CFG, QIX)]
@@ -104,7 +105,11 @@ def prepare(sdk):
                  '    badge_fonts_init();   /* optional flash font pack; built-in 14px otherwise */\n'
                  '    badge_status_build();\n\n    /* Hand the hardware buttons to LVGL:')
     ui = replace(ui, '            extern volatile u8 g_badge_adkey_kv;\n',
-                 '            extern volatile u8 g_badge_adkey_kv;\n            badge_system_poll();\n')
+                 '            extern volatile u8 g_badge_adkey_kv;\n            badge_system_poll();\n'
+                 '            badge_safety_ui_tick();   /* UI liveness watchdog */\n')
+    # Watchdog starts with the badge main loop (see badge_safety.h).
+    ui = replace(ui, '        u8 upd_shown = 0xff;\n',
+                 '        u8 upd_shown = 0xff;\n        badge_safety_start();\n')
     ui = replace(ui, '                extern u8 get_charge_online_flag(void);\n', '')
     ui = replace(ui, 'u8 chg_now = get_charge_online_flag();', 'u8 chg_now = badge_usb_online();')
     # Claim Update before any catalogue erase; serialize with the Back callback
@@ -138,7 +143,8 @@ int badge_resources_lock_update(void)
                  '/* Wallpaper is device-local data, not an embedded application bitmap. */')
     start = ui.index('/* ---- BLE-updatable lock wallpaper')
     end = ui.index('/* ---- Lock / screensaver: display + touch OFF', start)
-    ui = ui[:start] + '#include "badge_wallpaper.h"\n#include "badge_fonts.h"\n\n' + ui[end:]
+    ui = ui[:start] + ('#include "badge_wallpaper.h"\n#include "badge_fonts.h"\n'
+                       '#define BADGE_SAFETY_IMPLEMENTATION\n#include "badge_safety.h"\n\n') + ui[end:]
     ui = replace(ui, '        const lv_img_dsc_t *wp = lock_img_resolve();\n',
                  '        const lv_img_dsc_t *wp = lock_img_resolve();\n        if (wp) {\n')
     ui = replace(ui, '        lv_obj_add_flag(img, LV_OBJ_FLAG_GESTURE_BUBBLE);\n',
@@ -157,6 +163,19 @@ extern void wdt_clear(void);
     qix = replace(qix, '    extern int qix_raw_flash_handle(u8 cmd, const u8 *p, u16 plen);', '''    extern int qix_raw_flash_handle(u8 cmd, const u8 *p, u16 plen);
     if (badge_resource_command(cmd,p,plen)) return;
     if (badge_resource_protect_raw(cmd,p,plen)) return;''')
+    # Read-only safety diagnostics (0x97 -> 0x98) work in Display and Update alike.
+    qix = replace(qix, '    extern volatile u8 g_badge_display_mode;\n',
+                  '    extern int badge_safety_command(u8 cmd, const u8 *p, u16 n);\n'
+                  '    if (cmd == 0x97) { badge_safety_command(cmd, p, plen); return; }\n'
+                  '    extern volatile u8 g_badge_display_mode;\n')
+    qix += '''
+#ifdef CONFIG_BADGE_MENU
+void badge_safety_reply(const u8 *data, u16 len)
+{
+    qix_send_frame(0x98, data, len);
+}
+#endif
+'''
     # A disconnected uploader must BEGIN again, never inherit a stale write window.
     qix = replace(qix, 'void qix_ota_server_on_disconnect(void)\n{',
                    'void badge_resource_abort(void);\nvoid qix_ota_server_on_disconnect(void)\n{\n'
