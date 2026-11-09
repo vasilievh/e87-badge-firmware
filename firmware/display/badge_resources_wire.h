@@ -40,7 +40,7 @@ static int badge_resource_protect_raw(uint8_t cmd, const uint8_t *p, uint16_t n)
     uint8_t reply[5]={2,0,0,0,0};
     if (cmd!=0xD0 && cmd!=0xD1 && cmd!=0xD4) return 0;
     address=n>=4 ? br_u32(p) : 0;
-    length=cmd==0xD1 ? (n>=4 ? n-4 : 0) : (n==8 ? br_u32(p+4) : 0);
+    length=cmd==0xD1 ? (n>=4 ? (uint32_t)n-4u : 0u) : (n==8 ? br_u32(p+4) : 0);
     if (badge_resources_update_open() && badge_resource_raw_allowed(cmd,address,length)) return 0;
     qix_send_frame(cmd==0xD0 ? 0xD8 : cmd==0xD1 ? 0xD9 : 0xDC,reply,sizeof(reply));
     return 1;

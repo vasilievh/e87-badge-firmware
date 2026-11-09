@@ -87,8 +87,12 @@ from BEGIN; raw writes cannot resume by themselves. Mutating requests are never
 automatically retried after an uncertain acknowledgement. Each successful upload
 normally advances the catalogue generation twice, once for invalidation and once
 for publication. ABORT ends the write session but does not restore old contents.
-The Update screen remains locked until reboot after BEGIN, including an aborted
-upload; this also prevents use of stale in-memory font data.
+BEGIN locks Back on the Update screen, including after ABORT, but the existing
+disconnect handler clears that lock (`g_badge_update_active = 0`), so Back works
+again once the PC disconnects. Fonts and identity loaded at boot are not reloaded
+in RAM: until a reboot, text may be drawn from the old font metadata over the new
+or partially written pack (bounded reads, garbled glyphs, no crash). Always finish
+an upload with `--reboot`, or reboot before leaving the Update screen.
 
 ## Legacy compatibility and validation limits
 
