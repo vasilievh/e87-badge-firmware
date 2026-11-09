@@ -6,6 +6,7 @@
 #define BADGE_FONTS_H
 #include <stdint.h>
 #include <string.h>
+#include "badge_resources.h"
 #define BADGE_FONT_SLOT 0x310000u
 #define BADGE_FONT_SLOT_SIZE 0x2E000u /* ends at VIRFAT 0x33E000 */
 #define BADGE_FONT_MAX 4
@@ -27,6 +28,7 @@ static struct {
 } badge_fp;
 static lv_font_t badge_fp_lv[BADGE_FONT_MAX];
 static uint8_t badge_fp_bitmap[BADGE_FONT_BITMAP_MAX];
+static uint32_t badge_font_base=BADGE_FONT_SLOT;
 static struct { const lv_font_t *font; uint32_t letter; uint8_t loaded; badge_glyph_rec g; } badge_fp_last;
 
 #define BADGE_LE16(p) ((uint32_t)(p)[0] | (uint32_t)(p)[1] << 8)
@@ -66,7 +68,7 @@ static const badge_glyph_rec *badge_fp_glyph(const lv_font_t *font, uint32_t let
     int i;
     if (badge_fp_last.font == font && badge_fp_last.letter == letter) return &badge_fp_last.g;
     i = badge_fp_index(letter);
-    if (i < 0 || tzflash_read(&g, sizeof(g), BADGE_FONT_SLOT + r->table + 8u * (unsigned)i) < 0) return NULL;
+    if (i < 0 || tzflash_read(&g, sizeof(g), badge_font_base + r->table + 8u * (unsigned)i) < 0) return NULL;
     at = r->bitmaps + badge_fp_off(&g); len = badge_fp_len(&g);
     if (len > BADGE_FONT_BITMAP_MAX || at < r->bitmaps || at > badge_fp.size || len > badge_fp.size - at)
         return NULL;
@@ -91,7 +93,7 @@ static const uint8_t *badge_fp_bitmap_cb(const lv_font_t *font, uint32_t letter)
     const badge_font_rec *r = (const badge_font_rec *)font->dsc;
     if (!g) return NULL;
     if (!badge_fp_last.loaded) {
-        if (badge_fp_len(g) && tzflash_read(badge_fp_bitmap, badge_fp_len(g), BADGE_FONT_SLOT + r->bitmaps + badge_fp_off(g)) < 0)
+        if (badge_fp_len(g) && tzflash_read(badge_fp_bitmap, badge_fp_len(g), badge_font_base + r->bitmaps + badge_fp_off(g)) < 0)
             return NULL;
         badge_fp_last.loaded = 1;
     }
@@ -105,21 +107,26 @@ static unsigned badge_fonts_init(void)
     uint32_t size, at, n, glyphs, sum = 0, prev_end = 0, meta;
     uint16_t crc = 0xffff;
     unsigned i, fonts, ranges;
+    uint32_t resource_length=BADGE_FONT_SLOT_SIZE;
+    int resource;
     memset(&badge_fp, 0, sizeof(badge_fp));
     memset(&badge_fp_last, 0, sizeof(badge_fp_last));
-    if (tzflash_read(h, sizeof(h), BADGE_FONT_SLOT) < 0 || memcmp(h, "BFN1", 4) || h[4] != 1 || h[7]) return 0;
+    badge_font_base=BADGE_FONT_SLOT;
+    resource=badge_resource_find(BR_FONTS,&badge_font_base,&resource_length);
+    if (resource<0 || tzflash_read(h, sizeof(h), badge_font_base) < 0 || memcmp(h, "BFN1", 4) || h[4] != 1 || h[7]) return 0;
     fonts = h[5]; ranges = h[6]; size = BADGE_LE32(h+8); glyphs = BADGE_LE16(h+14);
     meta = 16u + 4u * ranges + 12u * fonts;
     if (!fonts || fonts > BADGE_FONT_MAX || !ranges || ranges > BADGE_FONT_RANGES ||
-        !glyphs || glyphs > BADGE_FONT_GLYPHS || size < meta || size > BADGE_FONT_SLOT_SIZE) return 0;
+        !glyphs || glyphs > BADGE_FONT_GLYPHS || size < meta || size > BADGE_FONT_SLOT_SIZE ||
+        (resource>0 && size!=resource_length)) return 0;
     for (at = 16; at < size; at += n) {
         n = size - at < sizeof(chunk) ? size - at : sizeof(chunk);
-        if (tzflash_read(chunk, n, BADGE_FONT_SLOT + at) < 0) return 0;
+        if (tzflash_read(chunk, n, badge_font_base + at) < 0) return 0;
         crc = badge_fp_crc(chunk, n, crc);
     }
     if (crc != BADGE_LE16(h+12)) return 0;
     for (i = 0; i < ranges; ++i) {
-        if (tzflash_read(chunk, 4, BADGE_FONT_SLOT + 16u + 4u * i) < 0) return 0;
+        if (tzflash_read(chunk, 4, badge_font_base + 16u + 4u * i) < 0) return 0;
         badge_fp.range[i][0] = (uint16_t)BADGE_LE16(chunk);
         badge_fp.range[i][1] = (uint16_t)BADGE_LE16(chunk+2);
         if (!badge_fp.range[i][1] || badge_fp.range[i][0] < prev_end ||
@@ -131,7 +138,7 @@ static unsigned badge_fonts_init(void)
     if (sum != glyphs || badge_fp.range[0][0] != 32 || badge_fp.range[0][1] != 95) return 0;
     for (i = 0; i < fonts; ++i) {
         badge_font_rec *r = &badge_fp.font[i];
-        if (tzflash_read(chunk, 12, BADGE_FONT_SLOT + 16u + 4u * ranges + 12u * i) < 0) return 0;
+        if (tzflash_read(chunk, 12, badge_font_base + 16u + 4u * ranges + 12u * i) < 0) return 0;
         r->px = chunk[0]; r->line_height = chunk[1]; r->base_line = chunk[2]; r->bpp = chunk[3];
         r->table = BADGE_LE32(chunk+4); r->bitmaps = BADGE_LE32(chunk+8);
         if (r->px < 8 || r->px > 48 || (i && r->px <= badge_fp.font[i-1].px) || r->bpp != 4 ||

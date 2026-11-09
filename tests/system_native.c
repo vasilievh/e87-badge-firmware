@@ -9,6 +9,14 @@ int tzflash_read(void *p, unsigned n, unsigned addr)
     memcpy(p, flash_record, n); return n;
 }
 #include "badge_identity.h"
+static int resource_status;
+static uint32_t resource_length=32;
+int badge_resource_find(uint32_t id, uint32_t *address, uint32_t *length)
+{
+    assert(id==BR_IDENTITY);
+    if (resource_status>0) { *address=BADGE_IDENTITY_ADDR; *length=resource_length; }
+    return resource_status;
+}
 #include "badge_power_status.h"
 int main(void)
 {
@@ -25,6 +33,10 @@ int main(void)
     crc=badge_identity_crc(flash_record+4,2,0xffff);
     crc=badge_identity_crc(flash_record+8,7,crc);
     flash_record[6]=crc; flash_record[7]=crc>>8;
+    resource_status=-1; badge_identity_load(name); assert(!strcmp(name,"Default"));
+    resource_status=1; resource_length=31;
+    badge_identity_load(name); assert(!strcmp(name,"Default"));
+    resource_length=32;
     badge_identity_load(name); assert(!strcmp(name, "Example"));
     assert(!strcmp(badge_mouse_local_name(), "Example Mouse"));
     for (i=0; i<32; ++i) {

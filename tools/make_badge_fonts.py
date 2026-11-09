@@ -6,7 +6,7 @@ the application. The default pack is Montserrat Medium (SIL OFL, tools/fonts) at
 14/20/24/36 px with ASCII, German letters, Russian Cyrillic and common punctuation.
 
   python tools/make_badge_fonts.py /private/fonts.bin
-  qix rawflash ADDRESS /private/fonts.bin --addr 0x310000 --verify --reboot
+  python -m qix_ble.resources ADDRESS upload fonts /private/fonts.bin --reboot
 
 Requires Pillow and fontTools. This does not connect to or flash a device.
 
@@ -146,7 +146,7 @@ def main(argv=None):
         parser.error(str(error))
     args.output.write_bytes(blob)
     print(f"Wrote {args.output}: {len(blob)} bytes, {len(sizes)} sizes, {len(CHARSET)} characters")
-    print(f"push: qix rawflash ADDRESS {args.output} --addr 0x{SLOT:X} --verify --reboot")
+    print(f"push: python -m qix_ble.resources ADDRESS upload fonts {args.output} --reboot")
     return 0
 
 

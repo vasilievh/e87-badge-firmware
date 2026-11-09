@@ -5,6 +5,7 @@
 #define BADGE_WALLPAPER_H
 #include <stdint.h>
 #include <string.h>
+#include "badge_resources.h"
 #define BADGE_WP_SLOT 0x2A0000u
 #define BADGE_WP_LEGACY_SLOT 0x300000u
 #define BADGE_WP_MAGIC 0x474D4B4Cu
@@ -67,8 +68,15 @@ static lv_res_t badge_wp_read_line(lv_img_decoder_t *decoder, lv_img_decoder_dsc
 
 static const lv_img_dsc_t *lock_img_resolve(void)
 {
+    uint32_t address=0, length=0;
+    int resource=badge_resource_find(BR_WALLPAPER, &address, &length);
     badge_wp_base = 0;
-    if (tzflash_read(&badge_wp, sizeof(badge_wp), BADGE_WP_SLOT) >= 0 && badge_wp_valid(&badge_wp, 360))
+    if (resource<0) return NULL; /* Do not revive a partial upload via legacy fallback. */
+    if (resource>0) {
+        if (tzflash_read(&badge_wp,sizeof(badge_wp),address)<0 || !badge_wp_valid(&badge_wp,360) ||
+            length!=16u+badge_wp.size) return NULL;
+        badge_wp_base=address;
+    } else if (tzflash_read(&badge_wp, sizeof(badge_wp), BADGE_WP_SLOT) >= 0 && badge_wp_valid(&badge_wp, 360))
         badge_wp_base = BADGE_WP_SLOT;
     else if (tzflash_read(&badge_wp, sizeof(badge_wp), BADGE_WP_LEGACY_SLOT) >= 0 && badge_wp_valid(&badge_wp, 144))
         badge_wp_base = BADGE_WP_LEGACY_SLOT;

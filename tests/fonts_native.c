@@ -56,11 +56,20 @@ int tzflash_read(void *buf, unsigned n, unsigned address)
     return (int)n;
 }
 #include "badge_fonts.h"
+static int resource_status;
+int badge_resource_find(uint32_t id, uint32_t *address, uint32_t *length)
+{
+    assert(id==BR_FONTS);
+    if (resource_status>0) { *address=SLOT; *length=pack_size; }
+    return resource_status;
+}
 
 static uint32_t le32(const uint8_t *p) { return p[0] | p[1] << 8 | p[2] << 16 | (uint32_t)p[3] << 24; }
 static void install(const uint8_t *data, unsigned n)
 {
     memset(flash, 0xff, sizeof(flash));
+    resource_status=-1; assert(badge_fonts_init()==0);
+    resource_status=0;
     memcpy(flash, data, n);
 }
 static void fix_crc(uint8_t *p)
@@ -142,6 +151,7 @@ int main(int argc, char **argv)
     install(pack, pack_size);
     read_limit = pack_size;
     max_read = 0;
+    resource_status=1;
     assert(badge_fonts_init() == pack[5]);
     check_glyphs();
     assert(max_read <= BADGE_FONT_BITMAP_MAX);

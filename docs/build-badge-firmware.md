@@ -10,6 +10,10 @@ The firmware is kept as a **patch on top of the vanilla JieLi SDK**, which is *n
 this repo: it is a git submodule pointing at JieLi's own GitLab. Nothing proprietary is
 redistributed here — you fetch it from the vendor yourself.
 
+This guide builds the upstream badge menu. For this branch's Display v1/v2,
+streaming wallpaper, battery status and flash-font support, follow
+[ble-display.md](ble-display.md#build): setup alone does not apply those overlays.
+
 ---
 
 ## TL;DR
@@ -178,15 +182,20 @@ existing image that already has the OEM uboot, flash geometry and Qix wrapper:
 
 ```sh
 python3 tools/ufw-repack/swap_app.py \
-    firmware/custom-fw-ac707n.ufw \        # base: read-only, for OEM geometry
-    <SDK>/cpu/br35/tools/app.bin \         # your build
-    firmware-builds/my-build.ufw           # output
+    firmware/custom-fw-ac707n.ufw \
+    <SDK>/cpu/br35/tools/app.bin \
+    firmware-builds/my-build.ufw
 ```
+
+Replace `<SDK>` with the actual SDK directory. The first path is the read-only
+OEM-geometry base, the second is the freshly built app, and the third is output.
+Keep the `\` at the end of each continued shell line, without a trailing comment.
 
 `--ota` does exactly this. `swap_app.py` recomputes every CRC (JLFS `app.bin`,
 `app_area_head`, `flash.bin`, list/header, Qix wrapper), so the output is flash-ready. Two
 builds of the same source differ in the embedded `__TIME__` bytes and the CRCs covering them —
-**a byte-different `.ufw` of the same size is expected**; don't compare by sha256. Full
+independent builds need not have the same SHA256. Verify each downloaded image
+against its own published checksum; equal file sizes do not establish integrity. Full
 protocol details in [ota-howto.md](ota-howto.md).
 
 ---
@@ -244,13 +253,11 @@ build judges the run by the images, not by that exit code.
 
 ### `badge-menu.patch neither applies nor is applied`
 
-The SDK worktree is dirty (a half-applied patch, or your own edits). Reset it:
-
-```sh
-SDK=tools/community-re/jieli-sdks/e_badge_707_sdk_200
-git -C "$SDK" checkout . && git -C "$SDK" clean -fd
-scripts/setup-badge-build.sh
-```
+The SDK worktree is dirty (a half-applied patch, or your own edits). Preserve that
+worktree and use a separate clean repository/SDK checkout, then rerun setup.
+For this development branch, the verified archive import and overlay order are
+documented in [ble-display.md](ble-display.md#build). Cleaning build objects does
+not remove an installed overlay or refresh its manifests.
 
 ### `FAIL R2 STAGER: built without STAGER=1`
 

@@ -40,7 +40,7 @@ def main():
     with open(out, "wb") as f:
         f.write(blob)
     print("wrote %s: %dx%d, %d bytes (header 16 + %d px)" % (out, w, h, len(blob), len(data)))
-    print("push: qix rawflash <mac> %s --addr %s --verify --reboot" % (out, "0x2A0000" if size > 144 else "0x300000"))
+    print("push (catalogue firmware): python -m qix_ble.resources <mac> upload wallpaper %s --addr %s --reboot" % (out, "0x2A0000" if size > 144 else "0x300000"))
 
 if __name__ == "__main__":
     main()

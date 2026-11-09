@@ -4,8 +4,12 @@
 > (v2: UTF-8 with the [flash font pack](docs/flash-fonts.md)), a Python PC client,
 > native protocol tests and an E87 build workflow.
 > See [docs/ble-display.md](docs/ble-display.md) for build status and instructions.
-> The Display sources pass host tests and a clean JieLi SDK build; the packaged
-> OTA image has offline integrity checks. A real-device test is still required.
+> The reference Display build passed host tests, a clean JieLi SDK build and
+> offline OTA integrity checks. Display v1/v2, the font pack and
+> streaming wallpaper have been checked on an E87; reconnects, CLEAR and
+> long-running operation still need dedicated hardware checks.
+> New [resource catalogue A/B](docs/resources.md) changes still need a vendor
+> build and hardware checks.
 > The upstream prebuilt firmware does not contain this mode.
 
 Reverse-engineering a **$10 JieLi AC707N / BR35 e-badge (E87 & DG01)** — round 360×360 RGB565 display,
@@ -81,10 +85,11 @@ image; the toolchain is described in [docs/ota-howto.md](docs/ota-howto.md#4-cus
 - A BLE adapter. The client is built on [`bleak`](https://github.com/hbldh/bleak), so the
   transport runs on **Linux (BlueZ), macOS (CoreBluetooth) and Windows (WinRT)** — every
   BlueZ/DBus helper inside it is gated behind `sys.platform == "linux"` and is a no-op elsewhere.
-  **Linux is what has been validated on hardware**, and the recipes in
-  [ota-howto.md](docs/ota-howto.md) are the Linux ones; their `rfkill` / `hciconfig` /
-  `qix cleanup` / `QIX_CONNECT_VIA_DBUS=1` steps are BlueZ workarounds that macOS and Windows
-  neither need nor have.
+  **Linux and Windows have been validated on E87 hardware**; macOS has not been
+  checked on hardware in this branch. The recipes in
+  [ota-howto.md](docs/ota-howto.md) include Linux-specific `rfkill` / `hciconfig` /
+  `qix cleanup` / `QIX_CONNECT_VIA_DBUS=1` steps. These are BlueZ workarounds
+  that macOS and Windows neither need nor have.
 
 **To build from source:** **Linux x86-64 only** — the JieLi toolchain and post-build tools are
 Linux ELF binaries. Also ~3 GB free disk and `ulimit -n` ≥ 65536. Full list in
@@ -155,8 +160,11 @@ fail *silently*:
   `scripts/build-jieli-ac707n*.sh` helpers + [`patches/m1/`](patches/m1) set remain for the
   vanilla/M1 variants.)
 
-- **Update the lock-screen image** (over BLE, no reflash): `tools/make_lockimg.py` +
-  `qix rawflash <MAC> lockimg.bin --addr 0x300000 --verify --reboot`. See
+- **Update the lock-screen image** (over BLE, no reflash): `tools/make_lockimg.py`
+  with size `360`, then `python -m qix_ble.resources ADDRESS upload wallpaper /private/wallpaper.bin --reboot`
+  for this branch's new catalogue firmware. Earlier streaming firmware uses
+  `qix rawflash` at `0x2A0000`; older 144px firmware uses `0x300000`.
+  Keep personal source images and generated blobs outside the repository; see
   **[docs/lock-image.md](docs/lock-image.md)**. (`rawflash` talks to the `0xD0–0xD4` raw-flash
   service that the *custom* firmware serves on its Update screen — not the legacy STAGER loader.)
 
@@ -190,6 +198,10 @@ research tools plus an on-device UI driven entirely from the badge. Its features
 
 | Doc | What |
 |---|---|
+| [ble-display.md](docs/ble-display.md) | Current Display v1/v2 status, overlay build, PC client and wire protocol |
+| [badge-system.md](docs/badge-system.md) | Menu battery status, USB behavior and device-local identity/wallpaper |
+| [flash-fonts.md](docs/flash-fonts.md) | Provision the device-local font pack for Unicode Display cards |
+| [resources.md](docs/resources.md) | A/B resource metadata, full CRC32, checked uploads, bounds and interruption behavior |
 | [build-badge-firmware.md](docs/build-badge-firmware.md) | **Build the custom firmware from source** — prerequisites, provenance of every downloaded piece, troubleshooting |
 | [ota-howto.md](docs/ota-howto.md) | **Flash it over BLE** — preflight, `OEM → custom`, `custom → custom`, `custom → OEM`, protocol details |
 | [dump-firmware.md](docs/dump-firmware.md) | **Dump your stock firmware** (wired / UBOOT) and **write it back** — over USB-ISP (no OTA) or as the `custom → OEM` BLE restore |
@@ -263,11 +275,12 @@ The firmware code added by the patch lives, in order of size:
 is ~4.8 k.) Edit inside the SDK worktree, rebuild, then regenerate the patch — recipe in
 [docs/build-badge-firmware.md](docs/build-badge-firmware.md#6-modifying-the-firmware).
 
-Tests — **there is no CI yet, so run them before opening a PR**:
+The **Badge Display** workflow runs selected host/native tests and builds this
+development branch. Run the relevant tests locally before opening a PR:
 
 ```sh
-( cd tools/qix-ble  && python3 -m pytest tests/ -q )   # 250 tests, mocked transport
-( cd tools/baji-ble && python3 -m pytest tests/ -q )   # 61 tests
+( cd tools/qix-ble  && python3 -m pytest tests/ -q )   # mocked transport
+( cd tools/baji-ble && python3 -m pytest tests/ -q )
 ```
 
 They cover protocol/packing logic against a mocked transport — **no test touches real BLE or real

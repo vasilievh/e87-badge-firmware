@@ -6,8 +6,11 @@ The existing `work/badge-dev` branch and its local documentation edit are preser
 Status: implementation and host/native verification only. No firmware containing
 these changes has been built with the JieLi toolchain or installed on a badge.
 Hardware current, wake reliability and battery-life improvement are unmeasured.
-Local checks: 312 Python tests passed, 2 skipped; all five native C harnesses
-passed. The changed idle harness was rerun after the final wake/clock changes.
+Before resource integration: 312 Python tests passed, 2 skipped; all five native
+C harnesses passed. Combined validation is recorded below.
+After integration: 338 Python tests passed, 2 skipped; all six native C harnesses
+passed, including interrupted A/B writes and idle/wake handling. Both combined
+overlays also applied and passed their manifests on the full pinned SDK sources.
 
 The reported symptom was a fall from a displayed 100% to 11% after about twelve
 hours with the tools closed and LCD off, followed by 9% after waking. Percent is
@@ -104,10 +107,11 @@ fixtures. That validates source integration, not target compilation.
 
 Apply the updated Display/system overlays to a **fresh pinned SDK** for a full
 JieLi build. An old installed system overlay is deliberately rejected by its
-manifest rather than silently mixed with these headers. This local work is based
-on `4e532ff`; the resource-catalog work from the other checkout must be integrated
-before preparing the eventual combined firmware. There is no new battery-life
-result or application-size measurement for this code yet.
+manifest rather than silently mixed with these headers. The resource catalogue
+and bounded BLE writes from `feat/ble-display` (`6d906f1`) are now integrated into
+this power branch. The shared overlay installs and validates both resource and
+idle headers, and the native runner includes both harnesses. There is no new
+battery-life result or application-size measurement for this code yet.
 
 After a successful build, size/integrity checks and a separately authorized
 installation: first verify several short Lock/wake cycles, display/touch and
