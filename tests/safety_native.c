@@ -8,55 +8,76 @@ static uint32_t rd32(const uint8_t *p)
     return (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24;
 }
 
+/* Feed one check per period; returns 1 if any check asked for a reset. */
+static int run(bs_watchdog *w, uint32_t *t, uint32_t *loops, int periods, uint32_t per_period,
+               int exempt)
+{
+    int i, reset = 0;
+    for (i = 0; i < periods; i++) {
+        *t += BS_WD_PERIOD_MS; *loops += per_period;
+        reset |= bs_watchdog_check(w, *t, *loops, exempt);
+    }
+    return reset;
+}
+
 static void test_watchdog(void)
 {
     bs_watchdog w = {0};
     uint32_t t = 1000, loops = 0;
-    int i;
-    /* First check only arms. */
-    assert(!bs_watchdog_check(&w, t, loops, 0));
-    /* Normal UI (~100 loops/s) for 10 minutes: never resets. */
-    for (i = 0; i < 120; i++) {
-        t += BS_WD_PERIOD_MS; loops += 500;
-        assert(!bs_watchdog_check(&w, t, loops, 0));
+    int i, reset;
+    assert(!bs_watchdog_check(&w, t, loops, 0));          /* first sample: span 0 */
+    assert(!run(&w, &t, &loops, 120, 500, 0));             /* ~100 loops/s for 10 min */
+    assert(!run(&w, &t, &loops, 120, 5, 0));               /* fix/lock-power wait, ~1/s */
+    assert(!run(&w, &t, &loops, 120, 165, 0));             /* old 30 ms lock poll, ~33/s */
+
+    /* Codex counterexample: 3 passes once every 50 s (0.06/s) must reset. */
+    w = (bs_watchdog){0}; reset = 0;
+    for (i = 0; i < 40 && !reset; i++) {
+        t += BS_WD_PERIOD_MS;
+        if (i % 10 == 0) loops += 3;
+        reset = bs_watchdog_check(&w, t, loops, 0);
     }
-    /* fix/lock-power lock wait: ~1 loop/s stays well above 0.5/s. */
-    for (i = 0; i < 120; i++) {
-        t += BS_WD_PERIOD_MS; loops += 5;
-        assert(!bs_watchdog_check(&w, t, loops, 0));
-    }
-    /* Starved UI (one pass per 20 s) resets after 60 s of stall, not before. */
-    for (i = 0; i < 11; i++) {
-        t += BS_WD_PERIOD_MS; loops += (i % 4 == 0);
-        assert(!bs_watchdog_check(&w, t, loops, 0));
-    }
-    t += BS_WD_PERIOD_MS;
-    assert(bs_watchdog_check(&w, t, loops, 0));
-    /* Recovery clears the stall. */
+    assert(reset && i <= 13);
+
+    /* A full stall resets once the window spans 60 s, not before. */
     w = (bs_watchdog){0};
     assert(!bs_watchdog_check(&w, t, loops, 0));
-    t += BS_WD_PERIOD_MS * 6; /* 30 s of total stall */
+    assert(!run(&w, &t, &loops, 11, 0, 0));
+    assert(run(&w, &t, &loops, 1, 0, 0));
+
+    /* Below the floor (0.2/s) resets; above it (0.4/s) does not. */
+    w = (bs_watchdog){0};
+    assert(run(&w, &t, &loops, 13, 1, 0));
+    w = (bs_watchdog){0};
+    assert(!run(&w, &t, &loops, 60, 2, 0));
+
+    /* fix/lock-power lock (~1/s), then a button held 40 s, then awake: no reset. */
+    w = (bs_watchdog){0};
+    assert(!run(&w, &t, &loops, 12, 5, 0));
+    assert(!run(&w, &t, &loops, 8, 0, 0));
+    assert(!run(&w, &t, &loops, 12, 500, 0));
+    /* Holding it a full minute: reset (documented). */
+    w = (bs_watchdog){0};
     assert(!bs_watchdog_check(&w, t, loops, 0));
-    t += BS_WD_PERIOD_MS; loops += 500;
-    assert(!bs_watchdog_check(&w, t, loops, 0) && w.stalled_ms == 0);
+    assert(run(&w, &t, &loops, 12, 0, 0));
+
     /* A timer that itself ran 70 s late sees the stall at once. */
+    w = (bs_watchdog){0};
+    assert(!run(&w, &t, &loops, 3, 500, 0));
     t += 70000; loops += 3;
     assert(bs_watchdog_check(&w, t, loops, 0));
+
     /* Update screen / active update: never resets, and re-arms afterwards. */
     w = (bs_watchdog){0};
-    for (i = 0; i < 100; i++) {
-        t += BS_WD_PERIOD_MS;
-        assert(!bs_watchdog_check(&w, t, loops, 1));
-        assert(w.exempt == 1 && w.stalled_ms == 0);
-    }
-    t += BS_WD_PERIOD_MS;
-    assert(!bs_watchdog_check(&w, t, loops, 0) && w.exempt == 0);
-    /* Millisecond counter wrap. */
+    assert(!run(&w, &t, &loops, 100, 0, 1));
+    assert(w.exempt == 1 && w.stalled_ms == 0 && w.count == 0);
+    assert(!run(&w, &t, &loops, 12, 0, 0) && w.exempt == 0);   /* fresh window: needs 60 s of history */
+    assert(run(&w, &t, &loops, 1, 0, 0));
+
+    /* Millisecond and loop counter wrap. */
     w = (bs_watchdog){0};
     t = 0xFFFFF000u; loops = 0xFFFFFF00u;
-    assert(!bs_watchdog_check(&w, t, loops, 0));
-    t += BS_WD_PERIOD_MS; loops += 500;
-    assert(!bs_watchdog_check(&w, t, loops, 0) && w.stalled_ms == 0);
+    assert(!run(&w, &t, &loops, 30, 500, 0) && w.stalled_ms == 0);
 }
 
 static void test_sleep_and_pages(void)

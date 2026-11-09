@@ -12,12 +12,15 @@
  *    counts calls. Nothing else defines it (gpu_task.c defines the separate
  *    lcd_te_sync_int_handler, which is left alone).
  * 3. UI liveness watchdog. The LVGL main loop ticks a counter. A hardware-timer
- *    callback resets the CPU when the loop has made fewer than
- *    BS_WD_MIN_LOOPS_PER_10S passes per 10 s of wall time for BS_WD_STALL_MS.
- *    The loop normally runs ~100 times/s (~33/s while suspended, ~1/s with the
- *    fix/lock-power wait). It is exempt while the Update screen is open or an
- *    update is active. Holding a button for over a minute inside a "wait for
- *    release" loop also stalls the UI loop and therefore resets the badge.
+ *    callback samples it every BS_WD_PERIOD_MS and resets the CPU when, over the
+ *    last BS_WD_STALL_MS of wall time, the loop made fewer than
+ *    BS_WD_MIN_LOOPS_PER_MIN passes per minute. A sliding window, so short bursts of
+ *    activity inside a long stall do not hide it. The loop normally runs ~100
+ *    times/s (~33/s while suspended, ~1/s with the fix/lock-power wait). It starts
+ *    in jl_gui_init(), before the boot-time screen build and suspend, and is exempt
+ *    while the Update screen is open or an update is active. Holding a button for
+ *    roughly 45-60 s inside a "wait for release" loop also stalls the UI loop and
+ *    therefore resets the badge.
  *
  * Read-only diagnostics over Qix (BLE on, e.g. on the Update screen):
  *   request 0x97 'B' 'S' 1 page(0..2) -> reply 0x98, 14 bytes:
@@ -35,8 +38,9 @@
 #define BS_REPLY 0x98
 #define BS_PAGE_SIZE 14
 #define BS_WD_PERIOD_MS 5000u
-#define BS_WD_MIN_LOOPS_PER_10S 5u
+#define BS_WD_MIN_LOOPS_PER_MIN 15u   /* 0.25 passes/s over the last minute */
 #define BS_WD_STALL_MS 60000u
+#define BS_WD_SAMPLES 13u   /* 12 periods of BS_WD_PERIOD_MS = BS_WD_STALL_MS */
 #ifndef BADGE_SAFETY_WATCHDOG
 #define BADGE_SAFETY_WATCHDOG 1   /* 0 = keep counting, never reset */
 #endif
@@ -46,34 +50,40 @@
 #define BS_EXEMPT 4
 
 typedef struct {
-    uint32_t last_ms, last_loops, stalled_ms;
-    uint8_t armed, exempt;
+    uint32_t ms[BS_WD_SAMPLES], loops[BS_WD_SAMPLES];
+    uint32_t stalled_ms;          /* length of the current low-progress window */
+    uint8_t count, next, exempt;
 } bs_watchdog;
 
-/* Returns 1 when the CPU should be reset. Wall-time based, so a timer that is
- * itself delayed still sees how little the UI loop advanced in between. */
+/* Returns 1 when the CPU should be reset. Compares the newest sample with the
+ * most recent stored sample that is at least BS_WD_STALL_MS old, i.e. the progress
+ * over (just over) the last minute. Wall-time based, so a timer that is itself
+ * delayed still sees how little the UI loop advanced in between. */
 static int bs_watchdog_check(bs_watchdog *w, uint32_t now_ms, uint32_t loops, int exempt)
 {
-    uint32_t elapsed, progressed;
+    unsigned k, i;
+    uint32_t span, progressed;
     w->exempt = exempt ? 1 : 0;
-    if (!w->armed || exempt) {
-        w->armed = 1;
-        w->last_ms = now_ms;
-        w->last_loops = loops;
-        w->stalled_ms = 0;
+    w->stalled_ms = 0;
+    if (exempt) {
+        w->count = 0;
+        w->next = 0;
         return 0;
     }
-    elapsed = now_ms - w->last_ms;
-    progressed = loops - w->last_loops;
-    w->last_ms = now_ms;
-    w->last_loops = loops;
-    if ((uint64_t)progressed * 10000u < (uint64_t)BS_WD_MIN_LOOPS_PER_10S * elapsed) {
-        w->stalled_ms = (w->stalled_ms + elapsed < w->stalled_ms) ? 0xFFFFFFFFu
-                                                                  : w->stalled_ms + elapsed;
-    } else {
-        w->stalled_ms = 0;
+    w->ms[w->next] = now_ms;
+    w->loops[w->next] = loops;
+    w->next = (uint8_t)((w->next + 1u) % BS_WD_SAMPLES);
+    if (w->count < BS_WD_SAMPLES) w->count++;
+    for (k = 1; k < w->count; k++) {
+        i = (w->next + BS_WD_SAMPLES - 1u - k) % BS_WD_SAMPLES;
+        span = now_ms - w->ms[i];
+        if (span < BS_WD_STALL_MS) continue;
+        progressed = loops - w->loops[i];
+        if ((uint64_t)progressed * 60000u < (uint64_t)BS_WD_MIN_LOOPS_PER_MIN * span)
+            w->stalled_ms = span;
+        return w->stalled_ms != 0;
     }
-    return w->stalled_ms >= BS_WD_STALL_MS;
+    return 0;   /* less than a minute of history yet */
 }
 
 typedef struct {
@@ -187,13 +197,16 @@ static inline void badge_safety_ui_tick(void)
 }
 
 /* Hardware-timer context (same timer class as the ADKEY scan), so it still runs
- * when tasks are starved. cpu_reset() is the same reset RAW_REBOOT uses. */
+ * when tasks are starved. The reset mirrors the SDK's own ASSERT path
+ * (cpu/br35/setup.c cpu_assert_debug: local_irq_disable(); cpu_reset();), which
+ * runs from any context, interrupts included. */
 static void bs_watchdog_timer(void *priv)
 {
     (void)priv;
     if (bs_watchdog_check(&bs_wd, timer_get_ms(), bs_ui_loops,
                           g_badge_update_active || g_on_update_scr)) {
 #if BADGE_SAFETY_WATCHDOG
+        local_irq_disable();
         cpu_reset();
 #endif
     }
@@ -201,6 +214,9 @@ static void bs_watchdog_timer(void *priv)
 
 static void badge_safety_start(void)
 {
+    static uint8_t started;
+    if (started) return;
+    started = 1;
     sys_hi_timer_add(NULL, bs_watchdog_timer, BS_WD_PERIOD_MS);
 }
 
