@@ -21,6 +21,13 @@ def sdk(tmp_path):
     cfg = tmp_path / system.CFG
     cfg.write_text('    sprintf(bt_cfg.edr_name, "%s", TCFG_JL_WALLPAPER_ADV_NAME);\n'
                    + cfg.read_text(encoding="utf8"), encoding="utf8")
+    # Unchanged vendor TE configuration that badge_safety.h depends on (pinned SDK).
+    for name, text in ((system.SDK_CONFIG, "#define TCFG_LCD_PIN_TE IO_PORTC_00 // LCD TE\r\n"),
+                       (system.BOARD_CFG, "#define TCFG_LCD_TE_USED_PEND 1\n"
+                                          "#define TCFG_LCD_TE_IO      TCFG_LCD_PIN_TE\n")):
+        target = tmp_path / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(text.encode())
     display.prepare(tmp_path)
     return tmp_path
 
@@ -50,6 +57,15 @@ def test_layers_are_idempotent_and_validate_together(sdk):
         assert (sdk / target).read_bytes() == (ROOT / 'firmware/display/badge_resources.h').read_bytes()
     assert "badge_update_battery_gate()) { return; }   /* OTA" in ui
     assert '#include "badge_fonts.h"' in ui and "badge_fonts_init();" in ui
+    assert '#define BADGE_SAFETY_IMPLEMENTATION\n#include "badge_safety.h"' in ui
+    assert ui.index('g_on_update_scr;') < ui.index('#include "badge_safety.h"')
+    assert ui.index('volatile u8 g_badge_update_active;') < ui.index('#include "badge_safety.h"')
+    assert ui.count('badge_safety_ui_tick();') == 1 and ui.count('badge_safety_start();') == 1
+    assert ui.index('badge_safety_start();') < ui.index('badge_safety_ui_tick();')
+    assert 'if (cmd == 0x97) { badge_safety_command(cmd, p, plen); return; }' in qix
+    assert qix.index('cmd == 0x97') < qix.index('if (g_badge_display_mode)')
+    assert 'qix_send_frame(0x98, data, len);' in qix
+    assert (sdk / system.HEADERS['badge_safety.h']).read_bytes() == (ROOT / 'firmware/display/badge_safety.h').read_bytes()
     assert ui.index('#include "badge_fonts.h"') < ui.index('#include "badge_display_ui.h"')
     conf = (sdk / system.CONF).read_text(encoding="utf8")
     assert "#define LV_FONT_MONTSERRAT_36 0   /* BADGE_SYSTEM_OVERLAY_V1 */ /* titles use the flash font pack */\n" in conf
@@ -82,14 +98,18 @@ def test_check_rejects_identity_source_drift(sdk):
         system.check(sdk)
 
 
-def test_idle_keeps_key_scanner_and_orders_clock_changes_around_lcd_power(sdk):
+def test_idle_keeps_key_scanner_and_leaves_clock_to_the_sdk(sdk):
     system.prepare(sdk)
     ui = (sdk / system.UI).read_text(encoding="utf8")
     enter = ui[ui.index("static void badge_lock_enter("):ui.index("static void badge_lock_wake(")]
     wake = ui[ui.index("static void badge_lock_wake("):ui.index("/* Any swipe on the lock image")]
-    assert enter.index("lcd_sleep_ctrl(1)") < enter.index("badge_idle_release_clock();")
+    # lcd_sleep_ctrl() already releases/re-takes the ui_show clock lock.
+    assert "clock_unlock" not in enter and "clock_lock" not in wake
+    assert "badge_idle_release_clock" not in ui and "badge_idle_restore_clock" not in ui
     assert enter.index("badge_idle_prepare_lock();") < enter.index("g_badge_locked = 1;")
-    assert wake.index("badge_idle_exit();") < wake.index("badge_idle_restore_clock();") < wake.index("lcd_sleep_ctrl(0)")
+    assert wake.index("badge_idle_exit();") < wake.index("lcd_sleep_ctrl(0)")
+    # Both watchdog hooks coexist with the idle wait (~1 loop/s while locked).
+    assert ui.count("badge_safety_ui_tick();") == 1 and ui.count("badge_safety_start();") == 1
     assert "if (g_badge_locked) badge_idle_wait();" in ui
     assert "if (badge_idle_take_key_wake() || g_badge_adkey_kv != NO_KEY)" in ui
     assert "os_time_dly(3);   /* ~30 ms poll" not in ui
@@ -126,3 +146,13 @@ def test_check_covers_board_copy_of_semaphore_header(sdk):
     target.write_bytes(target.read_bytes() + b"\n/* drift */\n")
     with pytest.raises(ValueError, match="outside"):
         system.check(sdk)
+
+
+def test_te_pin_configuration_drift_is_rejected_before_writes(sdk):
+    cfg = sdk / system.BOARD_CFG
+    cfg.write_text(cfg.read_text(encoding="utf8").replace("TE_USED_PEND 1", "TE_USED_PEND 0"),
+                   encoding="utf8")
+    before = (sdk / system.UI).read_bytes()
+    with pytest.raises(ValueError, match="TE pin configuration"):
+        system.prepare(sdk)
+    assert (sdk / system.UI).read_bytes() == before

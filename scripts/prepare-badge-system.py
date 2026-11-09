@@ -20,6 +20,8 @@ QIX = "SDK/apps/common/third_party_profile/jieli/rcsp/qix_ota_server.c"
 CONF = "SDK/apps/common/ui/lvgl_v8/lv_conf.h"
 BOARD = "SDK/apps/watch/board/br35/board_ac707n_demo/board_ac707n_demo.c"
 ADKEY = "SDK/apps/common/device/key/adkey.c"
+SDK_CONFIG = "SDK/apps/watch/board/br35/sdk_config.h"
+BOARD_CFG = "SDK/apps/watch/board/br35/board_ac707n_demo/board_ac707n_demo_cfg.h"
 MANIFEST = ".badge-system-overlay.json"
 HEADERS = {
     "badge_system_ui.h": str(Path(UI).with_name("badge_system_ui.h")),
@@ -30,6 +32,7 @@ HEADERS = {
     "badge_idle_ui.h": str(Path(UI).with_name("badge_idle_ui.h")),
     "badge_idle_status.h": str(Path(UI).with_name("badge_idle_status.h")),
     "badge_idle_event.h": str(Path(UI).with_name("badge_idle_event.h")),
+    "badge_safety.h": str(Path(UI).with_name("badge_safety.h")),
     "badge_resources_wire.h": str(Path(QIX).with_name("badge_resources_wire.h")),
 }
 RESOURCE_TARGETS = [str(Path(name).with_name("badge_resources.h")) for name in (UI, CFG, QIX)]
@@ -82,6 +85,13 @@ def prepare(sdk):
                                            for name in (UI, ADV, CFG, QIX, CONF, BOARD, ADKEY))
     if any(MARK in text for text in (ui, adv, cfg)):
         raise ValueError("Partial system overlay detected")
+    # badge_safety.h hardcodes the panel TE pin and relies on the SDK arming its
+    # interrupt; refuse to build if the board configuration says otherwise.
+    for name, needle in ((SDK_CONFIG, "#define TCFG_LCD_PIN_TE IO_PORTC_00 "),
+                         (BOARD_CFG, "#define TCFG_LCD_TE_USED_PEND 1\n"),
+                         (BOARD_CFG, "#define TCFG_LCD_TE_IO      TCFG_LCD_PIN_TE\n")):
+        if needle not in (sdk / name).read_text(encoding="utf8", errors="replace").replace("\r\n", "\n"):
+            raise ValueError(f"TE pin configuration changed in {name}; review badge_safety.h")
     # Remove the exclusive black charge page; existing main/menu screens remain usable.
     start = ui.index("static void badge_charge_render(void)")
     end = ui.index("/* ---- BLE-updatable lock wallpaper", start)
@@ -115,19 +125,19 @@ def prepare(sdk):
                  '    badge_fonts_init();   /* optional flash font pack; built-in 14px otherwise */\n'
                  '    badge_status_build();\n\n    /* Hand the hardware buttons to LVGL:')
     ui = replace(ui, '            extern volatile u8 g_badge_adkey_kv;\n',
-                 '            extern volatile u8 g_badge_adkey_kv;\n            badge_system_poll();\n')
+                 '            extern volatile u8 g_badge_adkey_kv;\n            badge_system_poll();\n'
+                 '            badge_safety_ui_tick();   /* UI liveness watchdog */\n')
+    # Watchdog starts with the badge main loop (see badge_safety.h).
+    ui = replace(ui, '        u8 upd_shown = 0xff;\n',
+                 '        u8 upd_shown = 0xff;\n        badge_safety_start();\n')
     ui = replace(ui, '    g_badge_locked = 1;\n',
                  '    badge_idle_prepare_lock();\n    g_badge_locked = 1;\n    badge_idle_enter();\n')
     ui = replace(ui, '                /* Suspended (black): any key press wakes to the lock image. */\n'
                      '                if (g_badge_adkey_kv != NO_KEY) {',
                  '                /* Retain a short press even if released before this task ran. */\n'
                  '                if (badge_idle_take_key_wake() || g_badge_adkey_kv != NO_KEY) {')
-    ui = replace(ui, '    lcd_sleep_ctrl(1);            /* backlight 0 + panel to sleep + power down */',
-                 '    lcd_sleep_ctrl(1);            /* backlight 0 + panel to sleep + power down */\n'
-                 '    badge_idle_release_clock();   /* panel is off; release ui_show max-frequency lock */')
     ui = replace(ui, '    lcd_sleep_ctrl(0);            /* powers the panel back on (kicks off the re-init task) */',
                  '    badge_idle_exit();             /* sample BEFORE the display/radio load */\n'
-                 '    badge_idle_restore_clock();    /* full clock before LCD/GPU re-init */\n'
                  '    lcd_sleep_ctrl(0);            /* powers the panel back on (kicks off the re-init task) */')
     ui = replace(ui, '                os_time_dly(3);   /* ~30 ms poll; CPU mostly idle while locked */',
                  '                if (g_badge_locked) badge_idle_wait(); /* key event or 1 s power tick */')
@@ -164,7 +174,8 @@ int badge_resources_lock_update(void)
                  '/* Wallpaper is device-local data, not an embedded application bitmap. */')
     start = ui.index('/* ---- BLE-updatable lock wallpaper')
     end = ui.index('/* ---- Lock / screensaver: display + touch OFF', start)
-    ui = ui[:start] + '#include "badge_wallpaper.h"\n#include "badge_fonts.h"\n\n' + ui[end:]
+    ui = ui[:start] + ('#include "badge_wallpaper.h"\n#include "badge_fonts.h"\n'
+                       '#define BADGE_SAFETY_IMPLEMENTATION\n#include "badge_safety.h"\n\n') + ui[end:]
     ui = replace(ui, '        const lv_img_dsc_t *wp = lock_img_resolve();\n',
                  '        const lv_img_dsc_t *wp = lock_img_resolve();\n        if (wp) {\n')
     ui = replace(ui, '        lv_obj_add_flag(img, LV_OBJ_FLAG_GESTURE_BUBBLE);\n',
@@ -183,6 +194,19 @@ extern void wdt_clear(void);
     qix = replace(qix, '    extern int qix_raw_flash_handle(u8 cmd, const u8 *p, u16 plen);', '''    extern int qix_raw_flash_handle(u8 cmd, const u8 *p, u16 plen);
     if (badge_resource_command(cmd,p,plen)) return;
     if (badge_resource_protect_raw(cmd,p,plen)) return;''')
+    # Read-only safety diagnostics (0x97 -> 0x98) work in Display and Update alike.
+    qix = replace(qix, '    extern volatile u8 g_badge_display_mode;\n',
+                  '    extern int badge_safety_command(u8 cmd, const u8 *p, u16 n);\n'
+                  '    if (cmd == 0x97) { badge_safety_command(cmd, p, plen); return; }\n'
+                  '    extern volatile u8 g_badge_display_mode;\n')
+    qix += '''
+#ifdef CONFIG_BADGE_MENU
+void badge_safety_reply(const u8 *data, u16 len)
+{
+    qix_send_frame(0x98, data, len);
+}
+#endif
+'''
     # A disconnected uploader must BEGIN again, never inherit a stale write window.
     qix = replace(qix, 'void qix_ota_server_on_disconnect(void)\n{',
                    'void badge_resource_abort(void);\nvoid qix_ota_server_on_disconnect(void)\n{\n'

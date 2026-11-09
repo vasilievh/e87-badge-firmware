@@ -24,16 +24,14 @@ but leaves hardware low-power mode disabled (`TCFG_LOWPOWER_LOWPOWER_SEL=0`).
 The upstream patch documents boot hangs with mode 2 on its tested hardware.
 This change does not enable that mode or change charge/protection thresholds.
 
-The SDK LVGL task calls `clock_lock("ui_show", clk_get_max_frequency())` at
-startup and never releases it on the custom Lock path. That prevents the SDK
-adaptive clock manager from lowering the system clock while the display is off.
-The new path calls `clock_unlock("ui_show")` **after** `lcd_sleep_ctrl(1)` and
-reacquires the same lock **before** LCD re-initialization/GPU use on wake. It does
-not force a clock, override another owner's lock or select raw PLL/PMU settings.
-The manager recalibrates in several 4-second steps after unlock; an immediate
-reading can still be maximum. Its floor is 24 MHz, but other workloads/clock
-requirements can keep it higher. Hardware stability of downclock/wake is still
-unverified; a failed restore or a screen/touch fault is a failed hardware check.
+The clock is left to the SDK. An earlier version of this branch called
+`clock_unlock("ui_show")` after `lcd_sleep_ctrl(1)` and `clock_lock()` before
+`lcd_sleep_ctrl(0)`, assuming the custom Lock path never released the UI's
+max-frequency lock. Reading the SDK (`cpu/br35/ui_driver/lcd_drive/lcd_drive.c`)
+showed `lcd_sleep_ctrl()` already does exactly that, and the clock manager's locks
+are per owner name, so the extra calls only duplicated it and were removed. The
+diagnostics still sample the system clock and record the lowest value seen while
+locked; the clock API result fields now always read `127` (not attempted).
 
 The UI previously polled every ~30 ms while locked; it now waits on a semaphore
 for a debounced key transition, with a 1-second timeout for USB/power sampling.
@@ -68,8 +66,8 @@ connect; leave it unset or `0` for this read-only tool.
 
 Output includes cached voltage in mV, SDK percent, USB/full flags, desired BLE
 state, configured hardware low-power mode, system clock, lowest system clock
-sampled during the most recent Lock interval, and clock API results (`0` success,
-negative failure, `127` not attempted). `ble_wanted` reports software intent, not
+sampled during the most recent Lock interval, and clock API results (always `127`,
+not attempted: the SDK manages the clock). `ble_wanted` reports software intent, not
 proof that the controller/analog radio is physically powered off.
 
 `last_lock` records duration and start/end mV/percent; the end is captured before

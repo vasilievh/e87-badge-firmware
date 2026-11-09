@@ -16,7 +16,6 @@ static u16 mv = 4200;
 static u8 percent = 100, usb, full, g_ble_want_on, g_badge_locked;
 volatile u8 g_badge_adkey_kv = 0xff;
 #define NO_KEY 0xff
-static int clock_owner = 1, unlock_calls, lock_calls;
 #define OS_SR_ALLOC()
 #define OS_ENTER_CRITICAL() do { assert(!critical); critical = 1; } while (0)
 #define OS_EXIT_CRITICAL() do { assert(critical); critical = 0; } while (0)
@@ -38,19 +37,8 @@ u8 get_vbat_percent(void) { assert(!critical); return percent; }
 u8 get_charge_full_flag(void) { return full; }
 static u8 badge_usb_online(void) { return usb; }
 static u32 clk_get(const char *name) { assert(!strcmp(name, "sys")); return sys_hz; }
-static u32 clk_get_max_frequency(void) { return 240000000; }
-int clock_unlock(char *name)
-{
-    assert(!critical && !strcmp(name, "ui_show")); ++unlock_calls;
-    if (clock_owner != 1) return -2;
-    clock_owner = 0; return 0; /* SDK starts adaptive calibration at maximum. */
-}
-static int clock_lock(const char *name, u32 hz)
-{
-    assert(!critical && !strcmp(name, "ui_show")); ++lock_calls;
-    if (clock_owner) return -1;
-    clock_owner = 1; sys_hz = hz; return 0;
-}
+/* No clock_lock/clock_unlock model: the header must not call them (the SDK's
+ * lcd_sleep_ctrl() owns the ui_show lock); a call would fail to compile here. */
 void badge_power_reply(const u8 *p, u16 length)
 { assert(!critical && length == sizeof(wire)); memcpy(wire, p, length); ++replies; }
 #include "badge_idle_ui.h"
@@ -76,19 +64,18 @@ int main(void)
     badge_idle_wait(); assert(!badge_key_event.sem.count && pend_ticks == 100);
     assert(badge_idle_take_key_wake() && !badge_idle_take_key_wake());
     badge_idle_wait(); assert(pend_calls == 2 && badge_idle.waits == 2 && !delay_calls);
-    badge_idle_release_clock();
-    assert(sys_hz == 240000000 && badge_idle.idle_hz == 240000000 && unlock_calls == 1);
-    now += 1000; sys_hz = 24000000; badge_idle_sample(); /* adaptive manager later downclocks */
+    /* Lock entry seeds the lowest locked clock with the clock at entry. */
+    assert(badge_idle.idle_hz == 240000000);
+    now += 1000; sys_hz = 24000000; badge_idle_sample(); /* SDK downclocks after panel sleep */
     assert(badge_idle.idle_hz == 24000000);
     /* Twelve-hour suspend, no percent or mV synthesis. Wake captures the SDK's
-     * reading before display load. Restoring the clock is a separate later step. */
+     * reading before display load; the SDK restores the clock in lcd_sleep_ctrl(0). */
     now = 43201000; percent = 11; mv = 3470;
     badge_idle_exit();
     assert(badge_idle.last_ms == 43200000 && badge_idle.exited_mv == 3470);
     assert(badge_idle.entered_mv == 4200 && badge_idle.entered_percent == 100);
     assert(!(badge_idle.flags & BI_LOCKED) && (badge_idle.flags & BI_LAST_VALID));
-    badge_idle_restore_clock(); g_badge_locked = 0;
-    assert(sys_hz == 240000000 && lock_calls == 1);
+    sys_hz = 240000000; g_badge_locked = 0;
     badge_key_wake = 1; badge_idle_prepare_lock(); assert(!badge_idle_take_key_wake());
     g_ble_want_on = usb = full = 1; badge_idle_sample();
     for (unsigned page = 0; page < 4; ++page) {
@@ -124,9 +111,8 @@ int main(void)
     badge_idle_status wrapping = {0};
     wrapping.now_ms = 0xfffff000; bi_enter(&wrapping);
     wrapping.now_ms += 60000; bi_exit(&wrapping); assert(wrapping.last_ms == 60000);
-    /* The clock manager's other owner is respected; no force lock/unlock. */
-    clock_owner = 2; badge_idle_release_clock(); badge_idle_restore_clock();
-    assert(clock_owner == 2 && badge_idle.unlock_result == -2 && badge_idle.lock_result == -1);
+    /* Clock API result fields stay "not attempted". */
+    assert(badge_idle.unlock_result == 127 && badge_idle.lock_result == 127);
     /* Touch waits indefinitely while gated off, and enable posts are retained.
      * Repeated off/on cycles do not leak a semaphore allocation per cycle. */
     badge_idle_event_init(&touch);
@@ -138,6 +124,6 @@ int main(void)
     badge_idle_event_signal(&touch); badge_idle_event_wait(&touch, 0);
     assert(!touch.ready && delay_ticks == 10);
     badge_idle_event_wait(&touch, 100); assert(delay_ticks == 100);
-    puts("Idle: retained key/touch wakes, timeout/fallback, clock ownership, telemetry, bounds and timer wrap OK");
+    puts("Idle: retained key/touch wakes, timeout/fallback, SDK-owned clock, telemetry, bounds and timer wrap OK");
     return 0;
 }

@@ -62,6 +62,30 @@ bypassed while USB is present, so the radio can now run in exactly that state.
 Test with a drained battery on USB (Scanner or Display open for 10–15 minutes)
 before relying on it.
 
+## Safety net (`badge_safety.h`)
+
+Added after a hang on 2026-11-09: the badge was suspended (panel off) on USB, was
+woken with Button 2 and stayed black, then ran the UI only every few tens of
+seconds, warm, ignoring touch and buttons, until the battery was drained. There is
+no reset button and no wired recovery on this unit, so the firmware now protects
+itself. RAM only; nothing is written to flash.
+
+- **TE guard.** The SDK's `lcd_drv_power_off()` leaves the panel TE pin (PC00) in
+  `PORT_HIGHZ` while its falling-edge interrupt stays armed, so the input floats
+  for the whole suspend. A registered LCD sleep handler pulls it down after
+  power-off; the SDK's `lcd_init_task()` restores the pull-up on wake. Leading
+  hypothesis for the hang and for the fast drain while locked, not yet confirmed.
+- **TE counter.** A strong `lv_lcd_te_sync_int_handler()` (the SDK's is an empty
+  weak hook in the LVGL build) counts TE interrupts, in total and per panel sleep.
+- **UI watchdog.** A hardware-timer callback resets the CPU (`cpu_reset()`, as
+  `RAW_REBOOT` does) when the LVGL main loop advanced fewer than 5 passes per 10 s
+  of wall time for 60 s. Normal: ~100/s awake, ~33/s suspended (~1/s with the
+  fix/lock-power wait). Exempt while the Update screen is open or an update runs.
+  Holding a button for over a minute in a "wait for release" loop also resets.
+- **Diagnostics.** With Display or Update open: `python -m qix_ble.safety ADDRESS`
+  (Qix 0x97 -> 0x98, read-only). After a suspend, `last_sleep.te_per_second` near
+  zero means the guard works; thousands per second would confirm the storm.
+
 ## Keep personal values out of Git and CI
 
 Firmware is generic. No personal name or wallpaper is compiled into it. Generate

@@ -1,6 +1,7 @@
 /* Included in the UI translation unit after the BLE helpers and state flags.
- * Only the UI's own clock-manager lock is released/restored; no raw clock/PMU or
- * charging writes. Only this task updates the cached measurements.
+ * No clock, PMU or charging writes: lcd_sleep_ctrl() itself releases the UI's
+ * "ui_show" clock lock on panel sleep and re-takes it on wake; this file only
+ * samples the resulting frequency. Only this task updates the cached measurements.
  * BLE reads/encodes the bounded snapshot under the same critical section. */
 #include "badge_idle_event.h"
 #include "badge_idle_status.h"
@@ -9,7 +10,6 @@ static badge_idle_status badge_idle;
 static volatile u8 badge_key_wake;
 extern volatile u8 g_badge_adkey_kv;
 extern void badge_power_reply(const u8 *data, u16 len);
-extern int clock_unlock(char *name);
 
 static void badge_idle_sample(void)
 {
@@ -63,36 +63,16 @@ static int badge_idle_take_key_wake(void)
 static void badge_idle_enter(void)
 {
     badge_idle_sample();
-    { OS_SR_ALLOC(); OS_ENTER_CRITICAL(); bi_enter(&badge_idle); OS_EXIT_CRITICAL(); }
+    { OS_SR_ALLOC(); OS_ENTER_CRITICAL();
+      bi_enter(&badge_idle);
+      badge_idle.idle_hz = badge_idle.sys_hz; /* lowered by later locked samples */
+      OS_EXIT_CRITICAL(); }
 }
 static void badge_idle_exit(void)
 {
     /* Capture the cached battery reading BEFORE powering the LCD back up. */
     badge_idle_sample();
     { OS_SR_ALLOC(); OS_ENTER_CRITICAL(); bi_exit(&badge_idle); OS_EXIT_CRITICAL(); }
-}
-static void badge_idle_release_clock(void)
-{
-    /* Called only AFTER lcd_sleep_ctrl(1). The manager respects other users and
-     * rejects an unlock if ui_show is not the current owner; never force a clock.
-     * Its adaptive calibration takes several 4 s steps; the immediate frequency
-     * may still be maximum. Sampling records the lowest observed locked clock.
-     * With no other requirements the manager's floor is 24 MHz. */
-    int result = clock_unlock("ui_show");
-    u32 hz = clk_get("sys");
-    OS_SR_ALLOC(); OS_ENTER_CRITICAL();
-    badge_idle.unlock_result = (int8_t)result;
-    badge_idle.idle_hz = badge_idle.sys_hz = hz;
-    OS_EXIT_CRITICAL();
-}
-static void badge_idle_restore_clock(void)
-{
-    /* Restore BEFORE LCD re-init and GPU rendering, through the same SDK API
-     * used at UI startup. Do not steal a lock from USB or another clock user. */
-    int result = clock_lock("ui_show", clk_get_max_frequency());
-    OS_SR_ALLOC(); OS_ENTER_CRITICAL();
-    badge_idle.lock_result = (int8_t)result;
-    OS_EXIT_CRITICAL();
 }
 static void badge_idle_wait(void)
 {
