@@ -44,8 +44,12 @@ class MockTransport:
             self.fd02_raw_sent = []
         self.fd02_raw_sent.append(bytes(data))
 
-    def send_command(self, cmd, payload=b"", flags=0, expect_cmd=None, timeout=5.0, response=False):
+    def send_command(self, cmd, payload=b"", flags=0, expect_cmd=None, timeout=5.0, response=False,
+                     fragment=False):
         self.sent.append((cmd, bytes(payload), flags))
+        if not hasattr(self, "write_modes"):
+            self.write_modes = []
+        self.write_modes.append((cmd, response, fragment))
         if not self.scripted:
             raise QixTimeoutError(f"MockTransport: no scripted response for cmd=0x{cmd:02X}")
         return self.scripted.popleft()
