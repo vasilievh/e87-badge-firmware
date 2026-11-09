@@ -3,7 +3,7 @@
 Status: host tests, native loader tests and a clean JieLi SDK build pass. Confirmed
 on hardware on 2026-11-09: the default pack was provisioned at 0x310000 over BLE and
 Display titles and v2 card text render from it (owner check on the physical screen).
-Reference build: source `5df908a`,
+Reference build: source `341c226` (built as `5df908a` before a message-only history rewrite),
 [Actions run 42542516507](https://github.com/vasilievh/jieli-ble-badge-research/actions/runs/42542516507).
 The application is 936,000 bytes (was 950,048 with the built-in 36px font), leaving
 59,616 bytes in the fixed 995,616-byte code slot.

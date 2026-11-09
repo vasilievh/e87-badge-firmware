@@ -10,7 +10,7 @@ This hardware check covers one card from a Windows host. Repeated updates,
 reconnects, leaving/reopening Display, CLEAR, long-running operation and the
 existing tools after this update have not yet been checked on hardware.
 
-Display v2: build `468a76e` ([Actions run 42554935192](https://github.com/vasilievh/jieli-ble-badge-research/actions/runs/42554935192),
+Display v2: build `49f91a4` (`468a76e` before a message-only history rewrite; [Actions run 42554935192](https://github.com/vasilievh/jieli-ble-badge-research/actions/runs/42554935192),
 application 936,544 bytes) was flashed from Windows on 2026-11-09 and the owner
 confirmed on the physical screen that, with the font pack installed, the v2 demo
 runs and shows Cyrillic, German letters and punctuation («Привет!», «Größe: 5 °C —

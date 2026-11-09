@@ -45,7 +45,7 @@ advertised **name** changes `OEM → custom firmware`.
   reassembles the frame; its `0xC3` ACK still keeps one chunk in flight. The previous
   480-byte write-with-response mode took about 10 minutes per image on Windows; it remains
   available with `QIX_OTA_SAFE=1`. `qix flash` prints the measured KB/s. Linux/macOS are
-  unchanged. Measured on 2026-11-09 (Windows host, E87, build `468a76e`): 1054 KB in
+  unchanged. Measured on 2026-11-09 (Windows host, E87, build `49f91a4`): 1054 KB in
   114 s, 9.2 KB/s. One earlier attempt the same night dropped the link during the
   synchronous staging erase that follows `0xC0` (before any chunk was sent); simply
   re-entering Update and retrying worked.
