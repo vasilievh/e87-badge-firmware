@@ -4,6 +4,7 @@ from bleak.exc import BleakError
 from types import SimpleNamespace
 from qix_ble.errors import BleConnectionError
 from qix_ble.frame import QixFrame
+from qix_ble.service import CHAR_FD02_WRITE
 from qix_ble.transport import QixTransport
 from qix_ble.update_manager import QixUpdater
 from tests.conftest import MockTransport
@@ -50,7 +51,7 @@ def test_linux_mode_is_unchanged(monkeypatch):
     assert set(modes) == {(True, False)}
 
 
-def make_transport(monkeypatch, mtu, fail_at=None):
+def make_transport(monkeypatch, mtu, fail_at=None, max_write_size=512):
     writes = []
 
     async def write(char, data, response):
@@ -67,17 +68,36 @@ def make_transport(monkeypatch, mtu, fail_at=None):
 
     monkeypatch.setattr("qix_ble.transport.asyncio.run_coroutine_threadsafe", submit)
     transport = QixTransport("00:11:22:33:44:55")
-    transport._client = SimpleNamespace(is_connected=True, write_gatt_char=write, mtu_size=mtu)
+
+    def get_characteristic(uuid):
+        assert uuid == CHAR_FD02_WRITE
+        return SimpleNamespace(max_write_without_response_size=max_write_size)
+
+    transport._client = SimpleNamespace(
+        is_connected=True, write_gatt_char=write, mtu_size=mtu,
+        services=SimpleNamespace(get_characteristic=get_characteristic),
+    )
     return transport, writes
 
 
-@pytest.mark.parametrize("mtu", [23, 185, 247, 517])
-def test_fragmented_frame_is_reassembled_byte_exactly(monkeypatch, mtu):
-    transport, writes = make_transport(monkeypatch, mtu)
+@pytest.mark.parametrize("mtu,max_write_size,expected_step", [
+    (23, 20, 20),
+    (185, 182, 182),
+    (247, 244, 244),
+    (517, 512, 512),
+    (517, 244, 244),
+    (247, 100, 100),
+    (517, 1024, 512),
+])
+def test_fragmented_frame_is_reassembled_byte_exactly(
+    monkeypatch, mtu, max_write_size, expected_step,
+):
+    transport, writes = make_transport(monkeypatch, mtu, max_write_size=max_write_size)
     frame = QixFrame(flags=6, cmd=0xC2, payload=bytes(range(256)) * 4 + b"12345678")
     transport.send_raw(frame, fragment=True)
     assert b"".join(data for data, _ in writes) == frame.encode()
-    assert all(len(data) <= max(20, mtu - 3) and response is False for data, response in writes)
+    assert max(len(data) for data, _ in writes) == expected_step
+    assert all(len(data) <= expected_step and response is False for data, response in writes)
 
 
 def test_fragment_write_failure_becomes_resumable_link_error(monkeypatch):
