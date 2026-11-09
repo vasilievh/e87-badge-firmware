@@ -4,6 +4,7 @@
 #define BADGE_IDENTITY_H
 #include <stdint.h>
 #include <string.h>
+#include "badge_resources.h"
 #define BADGE_IDENTITY_ADDR 0x30B000u
 #define BADGE_IDENTITY_SIZE 32
 #define BADGE_NAME_MAX 20
@@ -38,7 +39,9 @@ static void badge_identity_load(char *name)
     extern int tzflash_read(void *buf, unsigned int len, unsigned int offset);
     uint8_t record[BADGE_IDENTITY_SIZE];
     char local[BADGE_NAME_MAX+1];
-    if (tzflash_read(record, sizeof(record), BADGE_IDENTITY_ADDR) < 0 ||
+    uint32_t address=BADGE_IDENTITY_ADDR, length=BADGE_IDENTITY_SIZE;
+    int resource=badge_resource_find(BR_IDENTITY, &address, &length);
+    if (resource<0 || length!=sizeof(record) || tzflash_read(record, sizeof(record), address) < 0 ||
         !badge_identity_parse(record, local)) return;
     strcpy(name, local); /* SDK LOCAL_NAME_LEN is 32; local is at most 20 bytes. */
     strcpy(badge_private_mouse_name, local);

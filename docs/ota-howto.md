@@ -36,12 +36,16 @@ advertised **name** changes `OEM → custom firmware`.
 - **Host:** the `qix` client is built on [`bleak`](https://github.com/hbldh/bleak), so the BLE
   transport works on **Linux (BlueZ), macOS (CoreBluetooth) and Windows (WinRT)**; every
   BlueZ/DBus helper in it is gated behind `sys.platform == "linux"` and is a no-op elsewhere.
-  **The recipes below are the Linux ones and are what has been validated on hardware** — the
+  **Linux and Windows have been validated on E87 hardware; macOS has not been checked
+  on hardware in this branch.** The recipes below use Linux commands — the
   `rfkill` / `hciconfig` / `qix cleanup` / `QIX_CONNECT_VIA_DBUS=1` steps are BlueZ workarounds
   and are neither needed nor available on macOS/Windows, where bleak's native backend manages
   connection state itself. Install the client: `pip install -e tools/qix-ble`.
-- **Windows transfer mode:** each 1024-byte OTA chunk frame is sent as MTU-sized
-  Write-Without-Response packets (WinRT rejects ATT values above 512 bytes), and the badge
+- **Windows transfer mode:** each OTA chunk carries up to 1024 firmware bytes,
+  plus 8 chunk-header and 6 Qix-framing bytes (at most 1038 bytes total). The frame
+  is split into Write-Without-Response packets bounded by `MTU - 3`, FD02's
+  `max_write_without_response_size` and 512 bytes. Thus MTU 517 still uses writes
+  of at most 512 bytes, not 514. The badge
   reassembles the frame; its `0xC3` ACK still keeps one chunk in flight. The previous
   480-byte write-with-response mode took about 10 minutes per image on Windows; it remains
   available with `QIX_OTA_SAFE=1`. `qix flash` prints the measured KB/s. Linux/macOS are
@@ -49,6 +53,7 @@ advertised **name** changes `OEM → custom firmware`.
   114 s, 9.2 KB/s. One earlier attempt the same night dropped the link during the
   synchronous staging erase that follows `0xC0` (before any chunk was sent); simply
   re-entering Update and retrying worked.
+  The CLI labels 1024-byte units as KB/KB/s; they are KiB/KiB/s.
 - **Third-party crypto (`jltech`):** vendored as pure Python in `tools/ufw-repack/jltech/` —
   nothing to obtain, no `crcmod`. Only `scripts/gen_chipkey_keyfile.py` still needs the external
   `jl-misctools` mirror. See [README](../README.md#dependencies).
@@ -70,6 +75,29 @@ advertised **name** changes `OEM → custom firmware`.
   [dump-firmware.md](dump-firmware.md). Everything it needs
   (`dump2ufw.py` + its vendored `jltech/` + the shipped `loaderdl-base.ufw`) is already in
   this repo; the wired *dump* additionally needs the `tools/jl-uboot-tool` submodule.
+
+For the development Display build, use the packaged `firmware-builds/*.ufw` or
+the downloaded Actions image; `firmware/custom-fw-ac707n.ufw` is the upstream
+base and does not implement Display v1/v2. The current receiver must be on
+**Settings -> Update**, not **Bluetooth Display**. The older Spanish UI calls
+this **Ajustes -> Actualizar**.
+
+On Windows, use PowerShell without the Linux adapter/DBus steps:
+
+```powershell
+qix flash ADDRESS firmware-builds/e87-display-v1.ufw --oem --req-timeout 20
+```
+
+For the slower 480-byte mode, set `$env:QIX_OTA_SAFE = "1"` before running the
+command. Afterwards, `Remove-Item Env:QIX_OTA_SAFE -ErrorAction SilentlyContinue`
+returns future transfers to the default fragmented mode.
+
+The initial `0xC0` ATT write has a 30-second acknowledgement timeout. The
+`--req-timeout` option separately controls waiting for the `0xC1` notification
+after that write; it does not extend the write timeout. Staging initialization
+is not automatically retried. `--probe-only` sends the same `0xC0`: on the custom
+receiver it erases the staging span and changes update state, even though no
+firmware chunks are sent. It is not a read-only health check.
 
 ### The firmware image in [`firmware/`](../firmware)
 
@@ -117,8 +145,9 @@ a `\` breaks the line continuation and the shell then tries to run the `.bin`/`.
 
 `swap_app.py` prints the OEM app slot size (~995 KB) and 0xFF-pads the tail; your `app.bin` must
 fit it. The output size stays `1 079 363 B`. Two builds of the same source differ only in the
-embedded `__TIME__`/`__LINE__` bytes plus the CRCs that cover them — a byte-different `.ufw` with
-the same size is expected (don't compare by `sha256`). Then flash it per the
+embedded build metadata plus the CRCs that cover it — independent builds need
+not have the same SHA256. Verify a downloaded image against its own published
+checksum; equal sizes alone do not establish integrity. Then flash it per the
 [OEM → custom](#2-oem--custom) / [custom → custom](#3-custom--custom) recipes.
 
 ---
@@ -175,8 +204,12 @@ QIX_CONNECT_VIA_DBUS=1 QIX_FLASH_PAIR=1 QIX_CONNECT_ATTEMPTS=4 QIX_CONNECT_TIMEO
   qix flash <MAC> firmware/custom-fw-ac707n.ufw --oem --req-timeout 20
 ```
 
-This is the exact path validated end-to-end this session. Resume after a link drop works without
-re-issuing `0xC0`.
+This path has been validated for a complete transfer. Automatic resume after a
+link drop is receiver-dependent: the client reconnects and retries the same
+chunk without re-issuing `0xC0`, but the current custom receiver clears OTA state
+on disconnect/connect. Do not rely on resume with this build; if a transfer
+fails, re-enter Update and start a fresh `qix flash`. An interruption during
+staging erase also requires a fresh attempt.
 
 > **The receiver must carry the OEM uboot** (which the fw-custom packaging guarantees, and
 > which is preserved across every OTA). A badge that was USB-ISP'd with a raw SDK `make` image
@@ -200,7 +233,7 @@ the turn-around from dump to OTA image is two commands:
 ```sh
 # 1. Dump (wired, USB / UBOOT mode — never over BLE). From tools/jl-uboot-tool:
 cd tools/jl-uboot-tool
-python3 jluboottool.py "read 0x0 0x400000 oem-dump.bin"          # whole 4 MB, byte-exact
+python3 jluboottool.py "read 0x0 0x400000 ../../oem-dump.bin"    # whole 4 MB, byte-exact
 
 # 2. Repack (back at the repo root): dump.bin → vanilla RCSP .ufw for rcsp-flash
 cd ../..
@@ -288,4 +321,5 @@ Env vars (see [`tools/qix-ble/README.md`](../tools/qix-ble/README.md)):
   The custom → OEM leg uses the *native* RCSP loader instead, which rewrites the same
   CODE span in place and likewise leaves `key_mac` and the resource partitions alone.
 - Building the firmware is out of scope here — see
-  [build-m1-firmware.md](build-m1-firmware.md) and [jieli-sdk-build.md](jieli-sdk-build.md).
+  [build-badge-firmware.md](build-badge-firmware.md), or
+  [ble-display.md](ble-display.md#build) for this development branch's overlays.

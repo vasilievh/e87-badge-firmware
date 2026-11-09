@@ -110,4 +110,6 @@ def test_cli_writes_outside_repository(tmp_path, capsys):
     assert fonts.main([str(out), "--sizes", "14,36"]) == 0
     _, records = parse(out.read_bytes())
     assert [r[0] for r in records] == [14, 36]
-    assert "0x310000" in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert f"python -m qix_ble.resources ADDRESS upload fonts {out} --reboot" in output
+    assert "qix rawflash" not in output

@@ -29,3 +29,4 @@ if __name__ == "__main__":
     except (UnicodeError, ValueError) as error:
         parser.error(str(error))
     print(f"Wrote {args.output}: 32-byte device-local identity record")
+    print(f"push: python -m qix_ble.resources ADDRESS upload identity {args.output} --reboot")

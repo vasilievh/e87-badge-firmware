@@ -39,6 +39,15 @@ def test_layers_are_idempotent_and_validate_together(sdk):
     assert '#include "lock_wallpaper.h"' not in ui and 'g_lock_img_buf' not in ui
     assert '#include "badge_wallpaper.h"' in ui and 'if (wp) {' in ui
     assert '#define QIX_STAGE_END     0x2A0000u' in (sdk / system.QIX).read_text(encoding="utf8")
+    qix=(sdk / system.QIX).read_text(encoding="utf8")
+    assert '#define BADGE_RESOURCES_IMPLEMENTATION' in qix
+    assert 'badge_resource_command(cmd,p,plen)' in qix
+    assert 'badge_resource_protect_raw(cmd,p,plen)' in qix
+    assert 'badge_resource_abort();' in qix
+    assert 'int badge_resources_lock_update(void)' in ui
+    assert 'if (!locked) g_on_update_scr=0;' in ui
+    for target in system.RESOURCE_TARGETS:
+        assert (sdk / target).read_bytes() == (ROOT / 'firmware/display/badge_resources.h').read_bytes()
     assert "badge_update_battery_gate()) { return; }   /* OTA" in ui
     assert '#include "badge_fonts.h"' in ui and "badge_fonts_init();" in ui
     assert ui.index('#include "badge_fonts.h"') < ui.index('#include "badge_display_ui.h"')

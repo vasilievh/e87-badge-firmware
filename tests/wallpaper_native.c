@@ -21,6 +21,13 @@ static void lv_img_decoder_set_info_cb(lv_img_decoder_t *d, lv_res_t (*f)(lv_img
 static void lv_img_decoder_set_open_cb(lv_img_decoder_t *d, lv_res_t (*f)(lv_img_decoder_t *,lv_img_decoder_dsc_t *)) { (void)d;(void)f; }
 static void lv_img_decoder_set_read_line_cb(lv_img_decoder_t *d, lv_res_t (*f)(lv_img_decoder_t *,lv_img_decoder_dsc_t *,lv_coord_t,lv_coord_t,lv_coord_t,uint8_t *)) { (void)d;(void)f; }
 #include "badge_wallpaper.h"
+static int resource_state;
+int badge_resource_find(uint32_t id, uint32_t *address, uint32_t *length)
+{
+    assert(id==BR_WALLPAPER);
+    if(resource_state>0) { *address=BADGE_WP_SLOT; *length=BADGE_WP_SIZE; }
+    return resource_state;
+}
 static badge_wp_header full_header, legacy_header;
 int tzflash_read(void *buf, unsigned n, unsigned address)
 {
@@ -53,6 +60,9 @@ int main(void)
     assert(sizeof(badge_wp_header)==16 && sizeof(badge_wp_row)==720);
     assert(lock_img_resolve()==NULL && creates==0);
     full_header=(badge_wp_header){BADGE_WP_MAGIC,360,360,259200,0};
+    resource_state=-1; assert(lock_img_resolve()==NULL); /* no unchecked legacy revival */
+    resource_state=1; assert(lock_img_resolve()==&badge_wp_source);
+    resource_state=0;
     assert(lock_img_resolve()==&badge_wp_source && creates==1);
     assert(badge_wp_source.header.w==360 && badge_wp_source.header.h==360);
     assert(badge_wp_source.data && badge_wp_source.data_size==4 && badge_wp_source.header.cf==LV_IMG_CF_USER_ENCODED_0);

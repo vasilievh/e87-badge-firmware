@@ -453,8 +453,9 @@ class QixTransport:
         reliable). Default False (Write-Without-Response, fastest, lo que
         usa la mayoría de cmds Qix). OTA UpdateManager pasa True per community.
 
-        `fragment`: split the encoded frame into (MTU-3)-byte Write-Without-Response
-        packets. The badge reassembles Qix frames from the FD02 byte stream (1100-byte
+        `fragment`: split the encoded frame into Write-Without-Response packets
+        bounded by MTU-3, the FD02 characteristic's write limit and 512 bytes.
+        The badge reassembles Qix frames from the FD02 byte stream (1100-byte
         buffer), so one frame may span several writes. This avoids the 512-byte ATT
         value limit that WinRT enforces and the per-write round trip of a long write.
         """
@@ -466,7 +467,11 @@ class QixTransport:
                   frame.payload.hex())
         if fragment:
             mtu = getattr(self._client, "mtu_size", 0) or 23
-            step = max(20, mtu - 3)
+            characteristic = self._client.services.get_characteristic(CHAR_FD02_WRITE)
+            if characteristic is None:
+                raise BleConnectionError("FD02 write characteristic not found")
+            step = min(512, max(20, mtu - 3),
+                       characteristic.max_write_without_response_size)
             try:
                 for i in range(0, len(encoded), step):
                     asyncio.run_coroutine_threadsafe(

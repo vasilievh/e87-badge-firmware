@@ -5,8 +5,8 @@ Python client for talking to the JieLi AC707N/BR35 "E87" e-badge over BLE. It is
 the native JieLi RCSP protocol (service AE00), the 6-step auth handshake, OTA
 flash, the partition raw-flash stager, and bind / health-dump utilities.
 
-Original design spec: `docs/superpowers/specs/2026-05-06-qix-ble-client-design.md`.
-OTA transmission hardening (reconnect + resume): see `ROBUSTNESS.md`.
+Current firmware/OTA instructions: [ota-howto.md](../../docs/ota-howto.md).
+Connection retry and receiver-dependent OTA resume: see [ROBUSTNESS.md](ROBUSTNESS.md).
 
 ## Install
 
@@ -115,14 +115,42 @@ qix flash <mac> <wrapped.ufw> [--no-validate] [--probe-only] [--oem] [--bootstra
 qix rcsp-flash <mac> <update.ufw> [--probe-only] [--no-auth] [--json] [--relink-delay 10]
 ```
 
-- `--probe-only` (both) does ZERO writes to flash: only the negotiation handshake;
-  exit 0 if the badge accepts the `.ufw`, 3 if it rejects it.
+- `--probe-only` negotiates the update without sending firmware chunks;
+  exit 0 if the badge accepts the `.ufw`, 3 if it rejects it. It is not necessarily
+  read-only: Qix sends `0xC0`, which erases staging on the current custom receiver.
 - `qix flash --oem` = auth+bootstrap + long REQ_UPDATE timeout (~15s): use it for the
   first flash over a stock badge (which reacts slowly).
 
-### Raw-flash stager (custom loader loaded)
+On Windows, `qix flash` fragments frames carrying up to 1024 firmware bytes into
+unacknowledged ATT writes. Each write respects `MTU - 3`, FD02's
+`max_write_without_response_size` and the 512-byte limit. The badge's `0xC3` reply
+still acknowledges each chunk. `QIX_OTA_SAFE=1` selects the older 480-byte
+write-with-response mode; Linux/macOS retain their existing mode. See the
+[OTA guide](../../docs/ota-howto.md) for measured throughput and timeout details.
 
-These require the badge to be running the STAGER firmware (service 0xD0..0xD4):
+### Bluetooth Display (development firmware)
+
+```bash
+python -m qix_ble.display ADDRESS hello
+python -m qix_ble.display ADDRESS card --title "HELLO" --body "From the PC" --progress 65
+python -m qix_ble.display ADDRESS clear
+```
+
+Open **Bluetooth Display** on firmware built with the Display overlay. The client
+negotiates v2/v1; Unicode needs the system overlay and a separately provisioned
+font pack. Commands update one card in RAM. See [ble-display.md](../../docs/ble-display.md).
+
+### Raw flash (custom Update screen or legacy STAGER)
+
+On the new resource-catalogue firmware, use
+`python -m qix_ble.resources ADDRESS upload wallpaper /private/wallpaper.bin --reboot`
+(or `fonts`/`identity`) for resources. Direct writes to its resource area are
+blocked outside an authorized upload; see [resources.md](../../docs/resources.md).
+`python -m qix_ble.resources ADDRESS list` reads the A/B metadata without writes.
+
+`rawflash` and `stager-read` work on the custom firmware's **Update** screen,
+which serves opcodes `0xD0..0xD4`, as well as the legacy STAGER loader. The
+`stager-apply`/`deploy-fw` chain below is a legacy alternative to `qix flash`:
 
 ```bash
 qix rawflash    <mac> <file> --addr {0x17E000|ui_res|virfat|data} [--chunk 224] [--no-erase] [--verify] [--reboot]
@@ -135,7 +163,7 @@ qix patchflash  <mac> <file> --addr 0x300000 [--chunk 160] [--no-erase] [--no-bo
 `deploy-fw` is the one-shot loader→custom: it optionally flashes resources to `ui_res`,
 stages the code `.ufw` (the 27-byte Qix wrapper is auto-stripped) and does the apply.
 
-### Provision (OEM → custom in one command)
+### Provision (legacy OEM → loader → custom)
 
 ```bash
 qix provision <mac> --loader dumps/loader_in_jack.ufw \
@@ -157,8 +185,9 @@ qix soft-reset <mac> [--via-ota --ufw <wrapped.ufw>]   # SoC reboot (deprecated 
 ```
 
 `qix soft-reset --via-ota` (recommended on E87 OEM production): does the
-REQ_UPDATE handshake and disconnects; the badge resets on OTA timeout in ~5-30s, without writing
-anything to flash. Plain `qix soft-reset` uses cmd 0xA8 TEST_RESTART, which is gated on the
+REQ_UPDATE handshake and disconnects; the badge resets on OTA timeout in ~5–30s.
+It is not read-only: that handshake erases staging on the current custom receiver.
+Plain `qix soft-reset` uses cmd 0xA8 TEST_RESTART, which is gated on the
 E87 OEM.
 
 ## Environment variables (transport / pairing)
@@ -171,6 +200,7 @@ E87 OEM.
 - `QIX_FLASH_PAIR=1` — enables that fresh pairing in `qix flash` too (off by default so as
   not to touch the proven OEM→custom path).
 - `QIX_CONNECT_BY_ADDR=1` — connect by address instead of by scanned object.
+- `QIX_OTA_SAFE=1` — Windows-only: use 480-byte acknowledged OTA chunk writes.
 
 ## Tests
 
@@ -178,5 +208,6 @@ E87 OEM.
 cd tools/qix-ble && pytest tests/ -v
 ```
 
-264 tests: frame/RCSP layer + auth + bind + upload + OTA/stager state machines with
-mocked transport. There are NO tests of the real BLE transport (requires HW).
+Tests cover frame/RCSP encoding, Display, auth, bind, upload, OTA/stager state
+machines and transport write behavior with mocked BLE clients. They do not
+connect to real hardware; passing tests do not verify a physical BLE link.

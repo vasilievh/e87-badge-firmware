@@ -20,8 +20,14 @@ immediately before that OTA). Open **Settings -> Update**, then:
 
 ```sh
 python tools/make_lockimg.py /private/my-picture.png /private/wallpaper.bin 360
-qix rawflash ADDRESS /private/wallpaper.bin --addr 0x2A0000 --verify --reboot
+python -m qix_ble.resources ADDRESS upload wallpaper /private/wallpaper.bin --reboot
 ```
+
+This command requires the new [resource catalogue firmware](resources.md).
+It checks the full record CRC and commits metadata through A/B. On older
+streaming firmware, use
+`qix rawflash ADDRESS /private/wallpaper.bin --addr 0x2A0000 --verify --reboot`;
+that older verification samples bytes rather than checking the full CRC.
 
 The converter requires Pillow. A normal fixed-geometry E87 application OTA
 preserves the full-resolution slot and the separate device identity sector.
@@ -34,3 +40,6 @@ the identity sector and the beginning of VIRFAT. See `badge-system.md` for bound
 Use size `144` and address `0x300000` with older firmware. The converter retains
 144 as its default for that compatibility. The record is `LKMG`, width/height
 LE16, pixel-byte count LE32, reserved LE32, then RGB565 little-endian pixels.
+Existing fixed-address records remain readable without a catalogue entry. Their
+pixels have no stored CRC until re-uploaded through the catalogue client. With
+catalogue firmware, `--addr 0x300000` uploads/registers a legacy-size record safely.

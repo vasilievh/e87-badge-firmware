@@ -1,13 +1,21 @@
 # Battery status and device-local personalization
 
-Development overlay. The owner confirmed on 2026-11-09 that the menu battery
-status and the 360x360 streaming wallpaper work on the physical badge, and a
-device-local name is in use. Apply after `prepare-display.py`:
+Development overlay. On 2026-11-09 the owner confirmed a sharp wallpaper on the
+physical screen and no battery indicator on the home screen. Menu charging status
+and Bluetooth tool operation on USB still need confirmation. Apply after `prepare-display.py`:
 
 ```sh
 python scripts/prepare-badge-system.py
 bash scripts/build-badge-fw.sh --board e87 --clean --ota firmware-builds/e87-display-v1.ufw
 ```
+
+Current confirmed Display v2 build `49f91a4`: application 936,544 bytes in the
+995,616-byte code slot, leaving 59,072 bytes; see [build status](ble-display.md).
+The new [resource catalogue A/B](resources.md) is a later development change;
+its vendor build, application size and hardware behavior are not yet verified.
+The two builds below are historical. After changing overlay headers, use a fresh
+SDK checkout/import and reapply Display followed by this overlay; `--clean` alone
+does not refresh installed overlays.
 
 Previous clean SDK build (before streaming wallpaper): source `29d7d72`,
 [Actions run 42534138963](https://github.com/vasilievh/jieli-ble-badge-research/actions/runs/42534138963).
@@ -22,7 +30,7 @@ Streaming build: source `57d879d`,
 The application is 950,048 bytes, leaving 45,568 bytes in the same code slot.
 Image SHA256: `6397c0a4dd9f21943887b6c8bd29e8afed19eec5b6ed4e5844fdcbcb680f7868`.
 The clean SDK build and offline integrity/geometry/preservation checks passed.
-The new decoder still needs physical-screen confirmation.
+The owner confirmed the new decoder's image was sharp and the home indicator absent.
 
 The host allows 30 seconds for the initial C0 ATT write acknowledgement: staging
 erase is synchronous and can exceed the old five-second write timeout. This is
@@ -70,8 +78,14 @@ The optional font pack lives at `0x310000..0x33E000` and replaces the built-in
 
 ```sh
 python tools/make_badge_identity.py YOUR_NAME /private/location/identity.bin
-qix rawflash ADDRESS /private/location/identity.bin --addr 0x30B000 --verify --reboot
+python -m qix_ble.resources ADDRESS upload identity /private/location/identity.bin --reboot
 ```
+
+The catalogue firmware uses the checked resource uploader above; direct raw
+writes to the resource area are blocked. With older firmware only, use
+`qix rawflash ADDRESS /private/location/identity.bin --addr 0x30B000 --verify --reboot`.
+Existing unregistered identity/wallpaper/font records remain readable at their
+fixed addresses, with their original format checks, until re-uploaded.
 
 Identity record: 32 bytes, `BID1`, version u8=1, name length u8, CRC16-CCITT LE16,
 24 name/padding bytes. CRC uses seed 0xffff over version/length then name bytes.

@@ -25,7 +25,9 @@ HEADERS = {
     "badge_identity.h": str(Path(CFG).with_name("badge_identity.h")),
     "badge_wallpaper.h": str(Path(UI).with_name("badge_wallpaper.h")),
     "badge_fonts.h": str(Path(UI).with_name("badge_fonts.h")),
+    "badge_resources_wire.h": str(Path(QIX).with_name("badge_resources_wire.h")),
 }
+RESOURCE_TARGETS = [str(Path(name).with_name("badge_resources.h")) for name in (UI, CFG, QIX)]
 MARK = "/* BADGE_SYSTEM_OVERLAY_V1 */"
 
 
@@ -50,6 +52,9 @@ def check(sdk):
     for name, target in HEADERS.items():
         if digest((ROOT / "firmware/display" / name).read_bytes()) != record["files"][target]:
             raise ValueError("System header changed; recreate the SDK and reapply overlays")
+    for target in RESOURCE_TARGETS:
+        if digest((ROOT / "firmware/display/badge_resources.h").read_bytes()) != record["files"][target]:
+            raise ValueError("Resource header changed; recreate the SDK and reapply overlays")
     return record
 
 
@@ -102,6 +107,29 @@ def prepare(sdk):
                  '            extern volatile u8 g_badge_adkey_kv;\n            badge_system_poll();\n')
     ui = replace(ui, '                extern u8 get_charge_online_flag(void);\n', '')
     ui = replace(ui, 'u8 chg_now = get_charge_online_flag();', 'u8 chg_now = badge_usb_online();')
+    # Claim Update before any catalogue erase; serialize with the Back callback
+    # so a BLE upload cannot race the UI into reading resources being replaced.
+    ui = replace(ui, 'static u8 g_on_update_scr;             /* the update screen is showing */', '''static volatile u8 g_on_update_scr; /* shared with resource upload dispatch */
+int badge_resources_update_open(void) { return g_on_update_scr != 0; }
+int badge_resources_lock_update(void)
+{
+    int open;
+    extern volatile u8 g_badge_update_active;
+    OS_SR_ALLOC(); OS_ENTER_CRITICAL();
+    open=g_on_update_scr;
+    if (open) g_badge_update_active=1;
+    OS_EXIT_CRITICAL();
+    return open;
+}
+''')
+    ui = replace(ui, '    if (g_badge_update_active) { return; }   /* locked while an update is in progress */', '''    {
+        int locked;
+        OS_SR_ALLOC(); OS_ENTER_CRITICAL();
+        locked=g_badge_update_active;
+        if (!locked) g_on_update_scr=0;
+        OS_EXIT_CRITICAL();
+        if (locked) return;
+    }''')
     start = ui.index('            while (g_charge_active) {')
     end = ui.index('            if (g_warn_active)', start)
     ui = ui[:start] + ui[end:]
@@ -117,6 +145,22 @@ def prepare(sdk):
                  '        lv_obj_add_flag(img, LV_OBJ_FLAG_GESTURE_BUBBLE);\n        }\n')
     # Preserve the full-resolution wallpaper sector range during staging erase.
     qix = replace(qix, '#define QIX_STAGE_END     0x3BE000u', '#define QIX_STAGE_END     0x2A0000u')
+    qix = replace(qix, '/* Dispatch a complete, validated Qix frame. */', '''#ifdef CONFIG_BADGE_MENU
+extern void wdt_clear(void);
+#define BR_WATCHDOG() wdt_clear()
+#define BADGE_RESOURCES_IMPLEMENTATION
+#include "badge_resources.h"
+#include "badge_resources_wire.h"
+#endif
+
+/* Dispatch a complete, validated Qix frame. */''')
+    qix = replace(qix, '    extern int qix_raw_flash_handle(u8 cmd, const u8 *p, u16 plen);', '''    extern int qix_raw_flash_handle(u8 cmd, const u8 *p, u16 plen);
+    if (badge_resource_command(cmd,p,plen)) return;
+    if (badge_resource_protect_raw(cmd,p,plen)) return;''')
+    # A disconnected uploader must BEGIN again, never inherit a stale write window.
+    qix = replace(qix, 'void qix_ota_server_on_disconnect(void)\n{',
+                   'void badge_resource_abort(void);\nvoid qix_ota_server_on_disconnect(void)\n{\n'
+                   '#ifdef CONFIG_BADGE_MENU\n    badge_resource_abort();\n#endif')
     # Titles now come from the device-local font pack; the charge page that also
     # used the built-in 36px font was removed above. This frees ~14 KB of code.
     conf = replace(conf, '#define LV_FONT_MONTSERRAT_36 1   /* badge charge screen: real 36px thick font (glyphs stripped to ASCII 32..90) */',
@@ -129,6 +173,7 @@ def prepare(sdk):
                   '        ' + MARK + '\n        extern const char *badge_mouse_local_name(void);\n        const char *nm = badge_mouse_local_name();')
     output = {UI: ui.encode(), ADV: adv.encode(), CFG: cfg.encode(), QIX: qix.encode(), CONF: conf.encode()}
     output.update({target: (ROOT / "firmware/display" / name).read_bytes() for name, target in HEADERS.items()})
+    output.update({target: (ROOT / "firmware/display/badge_resources.h").read_bytes() for target in RESOURCE_TARGETS})
     record = {
         "display_manifest_sha256": digest((sdk / ".badge-display-overlay.json").read_bytes()),
         "base_files": {name: digest(data) for name, data in originals.items()},
