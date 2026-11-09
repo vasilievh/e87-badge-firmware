@@ -469,7 +469,11 @@ class QixTransport:
         # would hard-fail on a drop that happened on the OUTGOING chunk write.
         # Normalise both to BleConnectionError so resume can reconnect + retry.
         try:
-            fut.result(timeout=5.0)
+            # REQ_UPDATE erases the staging region synchronously on the badge.
+            # Its ATT write acknowledgement can take more than 5 s, before we
+            # even begin waiting for the C1 notification. Do not abandon that
+            # in-flight erase/write while the device is still preparing OTA.
+            fut.result(timeout=30.0 if frame.cmd == 0xC0 else 5.0)
         except (BleakError, concurrent.futures.TimeoutError) as e:
             raise BleConnectionError(f"FD02 write failed (link drop?): {e}") from e
 
