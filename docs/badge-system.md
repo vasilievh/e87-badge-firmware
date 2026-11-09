@@ -50,6 +50,14 @@ deferral. No charger voltage/current limits, power-off thresholds or PMU setting
 are changed by this overlay. Operation of each tool on USB still needs hardware
 verification on the target badge.
 
+**Open risk.** Upstream's charge screen deliberately kept the radio off for the
+whole USB session: its comment in `badge-menu.patch` (`badge_charge_screen_enter`)
+documents a brownout lockup when the radio runs while USB and the battery share
+the supply. This overlay removes that screen, and the low-battery BLE gate is
+bypassed while USB is present, so the radio can now run in exactly that state.
+Test with a drained battery on USB (Scanner or Display open for 10–15 minutes)
+before relying on it.
+
 ## Keep personal values out of Git and CI
 
 Firmware is generic. No personal name or wallpaper is compiled into it. Generate
