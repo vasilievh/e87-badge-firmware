@@ -129,6 +129,9 @@ int main(int argc, char **argv)
     memset(flash, 0xff, sizeof(flash));
     assert(badge_fonts_init() == 0 && !badge_font_px(36));
     assert(bd_title_font("HELLO") == &lv_font_montserrat_14); /* erased slot: built-in font */
+    /* Display v2 hooks without a pack: built-in text font, ASCII only, no font id. */
+    assert(bd_text_font() == &lv_font_montserrat_14 && !bd_font_id());
+    assert(bd_glyph('A') && bd_glyph('~') && !bd_glyph(0x41F) && !bd_glyph(0x7F) && !bd_glyph(0x1F));
     if (argc < 2) { puts("Fonts: erased-slot fallback OK (no generated pack supplied)"); return 0; }
     file = fopen(argv[1], "rb");
     assert(file);
@@ -143,6 +146,10 @@ int main(int argc, char **argv)
     check_glyphs();
     assert(max_read <= BADGE_FONT_BITMAP_MAX);
     assert(bd_title_font("HELLO") == badge_font_px(36));
+    /* Display v2 hooks with a pack: pack text font, its character set, CRC as font id. */
+    assert(bd_text_font() == badge_font_px(14) && bd_font_id() == (pack[12] | pack[13] << 8));
+    assert(bd_glyph(0x41F) && bd_glyph(0xDF) && bd_glyph(0x2116) && bd_glyph('A'));
+    assert(!bd_glyph(0x4E2D) && !bd_glyph(0x7F) && !bd_glyph(0x1F) && !bd_glyph(0x1F600));
     assert(bd_title_font("\xD0\x9F\xD1\x80\xD0\xB8\xD0\xB2\xD0\xB5\xD1\x82") == badge_font_px(36)); /* Привет */
     assert(bd_title_font("WWWWWWWWWWWWW") != badge_font_px(36));
     assert(bd_title_font("WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW") ==
@@ -152,6 +159,15 @@ int main(int argc, char **argv)
     assert(!badge_font_px(36)->get_glyph_dsc(badge_font_px(36), &d, 'Q', 0));
     assert(badge_fonts_init() == 0 && !badge_font_px(14));
     fail_read = 0;
+
+    /* A pack without a 14px size cannot draw card text: v2 stays ASCII-only. */
+    memcpy(mutated, pack, pack_size);
+    if (mutated[16 + 4 * pack[6]] == 14) {
+        mutated[16 + 4 * pack[6]] = 15; fix_crc(mutated);
+        install(mutated, pack_size); read_limit = pack_size;
+        assert(badge_fonts_init() == pack[5] && !badge_font_px(14));
+        assert(!bd_font_id() && !bd_glyph(0x41F) && bd_glyph('A') && bd_text_font() == &lv_font_montserrat_14);
+    }
 
     /* Truncation and a header claiming more bytes than were written. */
     install(pack, pack_size - 1); read_limit = SLOT_SIZE;

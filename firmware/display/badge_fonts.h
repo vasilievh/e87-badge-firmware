@@ -12,7 +12,7 @@
 #define BADGE_FONT_RANGES 32
 #define BADGE_FONT_GLYPHS 512
 #define BADGE_FONT_BITMAP_MAX 1024
-#define BADGE_TITLE_FONT 1 /* replaces the Display title's built-in 36px font */
+#define BADGE_TITLE_FONT 1 /* Display uses the pack: titles, text and its character set */
 extern int tzflash_read(void *buf, unsigned int len, unsigned int offset);
 
 typedef struct { uint8_t px, line_height, base_line, bpp; uint32_t table, bitmaps; } badge_font_rec;
@@ -20,6 +20,7 @@ typedef struct { uint8_t off[3], adv, w, h; int8_t x, y; } badge_glyph_rec;
 typedef char badge_glyph_rec_is_8_bytes[sizeof(badge_glyph_rec) == 8 ? 1 : -1];
 static struct {
     uint32_t size;
+    uint16_t crc;
     uint8_t fonts, ranges;
     uint16_t range[BADGE_FONT_RANGES][2];
     badge_font_rec font[BADGE_FONT_MAX];
@@ -145,7 +146,7 @@ static unsigned badge_fonts_init(void)
         f->line_height = badge_fp.font[i].line_height; f->base_line = badge_fp.font[i].base_line;
         f->underline_position = -2; f->underline_thickness = 1; f->dsc = &badge_fp.font[i];
     }
-    badge_fp.ranges = (uint8_t)ranges; badge_fp.fonts = (uint8_t)fonts;
+    badge_fp.crc = crc; badge_fp.ranges = (uint8_t)ranges; badge_fp.fonts = (uint8_t)fonts;
     return fonts;
 }
 
@@ -169,4 +170,23 @@ static const lv_font_t *bd_title_font(const char *title)
     }
     return smallest ? smallest : &lv_font_montserrat_14;
 }
+
+/* Display v2 accepts non-ASCII text only when the pack can draw every field:
+ * a 14px text size and at least one title size (all sizes share one character set). */
+static int bd_unicode(void)
+{
+    return badge_font_px(14) && (badge_font_px(36) || badge_font_px(24) || badge_font_px(20));
+}
+static const lv_font_t *bd_text_font(void)
+{
+    const lv_font_t *font = badge_font_px(14);
+    return font ? font : &lv_font_montserrat_14;
+}
+/* Called on the BLE task: reads only the range table, which is fixed after boot. */
+static int bd_glyph(uint32_t c)
+{
+    if (c >= 32 && c <= 126) return 1;
+    return bd_unicode() && badge_fp_index(c) >= 0;
+}
+static uint16_t bd_font_id(void) { return bd_unicode() ? (badge_fp.crc ? badge_fp.crc : 1) : 0; }
 #endif

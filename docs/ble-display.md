@@ -32,7 +32,7 @@ importing it. No locally downloaded SDK or personal files are uploaded to GitHub
 
 The new **Bluetooth Display** menu item presents a 360x360 card with a title,
 body, footer, background/text/accent colors and an optional 0..100 progress bar.
-The three text limits are 48, 96 and 64 bytes. Long text is clipped with dots;
+The text limits are 48/96/64 bytes in v1 and 64/192/96 bytes in v2. Long text is clipped with dots;
 the byte limits are transport limits, not a guarantee every character fits.
 Without the system overlay, uppercase titles use the existing 36px font and
 lowercase titles fall back to 14px because upstream's large font has only glyphs
@@ -41,9 +41,12 @@ basic objects, since upstream compiles out the LVGL bar widget.
 Updates replace one card in RAM. No filesystem, gallery or flash writes occur.
 The existing Mouse, Scanner, Spoofing, Settings and Update tools remain in the menu.
 
-Version 1 deliberately accepts printable ASCII, plus newlines in the body.
-The flash font pack contains German umlauts and Cyrillic, but v1 still sends ASCII only. Unicode fonts,
-images, drawing primitives and touch events are subsequent protocol extensions.
+Version 1 accepts printable ASCII, plus newlines in the body. Version 2 accepts
+UTF-8 when the [flash font pack](flash-fonts.md) is installed: every character must
+exist in the pack (default: ASCII, German letters, Russian Cyrillic, common
+punctuation), and body/footer then use the pack's 14px font. Without a pack, v2
+accepts ASCII only. Images, drawing primitives and touch events are later extensions.
+Display v2 is not yet tested on hardware.
 
 BLE is enabled only while Display is open; it advertises as **EC-BADGE**.
 Button 1 returns to the menu and disconnects. With the optional
@@ -99,6 +102,7 @@ upstream's OEM-uboot-preserving base. See `ota-howto.md` for installation.
 python -m pip install -e tools/qix-ble
 python -m qix_ble.display ADDRESS hello
 python -m qix_ble.display ADDRESS card --title "HELLO" --body "From the PC" --progress 65
+python -m qix_ble.display ADDRESS card --title "Привет" --body "Größe: 5 °C"
 python -m qix_ble.display ADDRESS demo
 python -m qix_ble.display ADDRESS clear
 ```
@@ -124,20 +128,29 @@ Existing Qix framing on FD02 write / FD01 notify is reused, without changing GAT
 UUIDs. Request opcode **0x90**, response **0x91** are reserved by this fork and
 prefixed with magic `BD` to distinguish them from vendor messages.
 
-Requests: `BD | version:u8=1 | operation:u8 | sequence:LE16 | body`.
+Requests: `BD | version:u8 (1 or 2) | operation:u8 | sequence:LE16 | body`.
 HELLO=1, CARD=2, CLEAR=3, STATUS=4. HELLO/CLEAR/STATUS have no body.
 CARD body: background RGB24, foreground RGB24, accent RGB24, progress:u8 (255
-hides it), title/body/footer byte lengths:u8 each, then the three ASCII strings.
-Maximum payload 227 bytes, complete Qix frame 233 bytes. Writes use response=True.
+hides it), title/body/footer byte lengths:u8 each, then the three strings.
+v1: ASCII, maximum payload 227 bytes (233-byte Qix frame). v2: UTF-8 with 1..3-byte
+sequences only (no overlong forms, surrogates or characters beyond U+FFFF), limits
+64/192/96 bytes, maximum payload 371 bytes (377-byte frame, one WinRT write, below
+the badge's 1,100-byte receive buffer). Writes use response=True.
 
 Responses start `BD | version | operation OR 0x80 | echoed sequence:LE16 | status`.
-Successful HELLO adds width:LE16, height:LE16 and the three byte limits (14-byte
-payload / 20-byte frame). Other successful responses add revision:LE16. Errors
+Successful v1 HELLO adds width:LE16, height:LE16 and the three byte limits (14-byte
+payload / 20-byte frame). Successful v2 HELLO adds the three v2 limits, flags (bit 0:
+non-ASCII text accepted) and the font pack id (its CRC16; 0 without a usable pack),
+a 13-byte payload. Firmware that does not know a version answers with a v1 header
+and status 2; the client then falls back to v1 and ASCII. Other successful responses add revision:LE16. Errors
 also include a revision; status 1 malformed, 2 version, 3 command, 4 value,
 5 Display inactive, 6 mailbox busy. Revision wraps at 65536.
 
 The host negotiates HELLO before updates, checks sequence/operation, and waits
-for an application acknowledgement after the UI applies each card. It does not
+for an application acknowledgement after the UI applies each card. The BLE task
+validates a request, then decodes it directly into the free mailbox; the UI task
+renders from the mailbox and only then frees it, so no card is copied onto either
+task's stack. It does not
 automatically retry mutations after a timeout: a lost ACK has an uncertain result.
 There is one pending request; no unbounded queues, dynamic packet allocations or
 LVGL calls in the BLE callback. Leaving Display clears the mailbox. Other Qix

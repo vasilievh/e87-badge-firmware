@@ -1,7 +1,8 @@
 # jieli-ble-badge-research
 
-> **Development branch: Bluetooth Display v1.** RAM-only text/color/progress cards,
-> a Python PC client, native protocol tests and an E87 build workflow.
+> **Development branch: Bluetooth Display v1/v2.** RAM-only text/color/progress cards
+> (v2: UTF-8 with the [flash font pack](docs/flash-fonts.md)), a Python PC client,
+> native protocol tests and an E87 build workflow.
 > See [docs/ble-display.md](docs/ble-display.md) for build status and instructions.
 > The Display sources pass host tests and a clean JieLi SDK build; the packaged
 > OTA image has offline integrity checks. A real-device test is still required.
