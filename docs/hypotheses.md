@@ -11,9 +11,10 @@ Status: **open** (not yet tested), **supported** (evidence agrees, not proven),
 Symptom: badge suspended with Button 1 while charging at 100%, woken with Button 2. Screen
 stayed black, then showed the wallpaper and later the menu, but the UI updated only every
 few tens of seconds, ignored touch and almost all key presses, and the badge got warm.
-Unplugging USB did not help; holding both buttons for 15 s did not reset it. About 3.5 h
-later, with the gauge at ~4-5%, it rebooted on its own and then worked normally. The cause
-of that reboot is unknown (no logs). Firmware: `dev` before the resource catalogue.
+Unplugging USB did not help; holding both buttons for 15 s did not reset it. It stayed in
+that state until the battery was completely drained (about 3.5 h); after charging it booted
+normally. This confirms the last-resort recovery for a hang on this unit: drain fully, then
+charge for a cold boot. Firmware: `dev` before the resource catalogue.
 
 | Hypothesis | Status | Evidence / how to test |
 |---|---|---|
