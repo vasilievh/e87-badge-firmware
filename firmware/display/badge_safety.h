@@ -21,6 +21,11 @@
  *    while the Update screen is open or an update is active. Holding a button
  *    inside a "wait for release" loop also stalls the UI loop: about 30 s from the
  *    lock screen, about 60 s when awake, then the badge resets.
+ *    The check also decides when the history is one sample short of a full
+ *    minute (callbacks a few ms faster than BS_WD_PERIOD_MS by timer_get_ms(); the
+ *    old rule then never decided -- docs/hypotheses.md, 2026-11-10) and when the
+ *    loop made no progress at all over the full history, whatever timer_get_ms()
+ *    says the span was.
  *    Reset: interrupts off, then spin, so the SDK's hardware watchdog
  *    (wdt_init(WDT_APP_RUN_TIME) = WDT_LRC_4S in app_main.c, WDT_16S during setup;
  *    checked by prepare-badge-system.py) resets the chip, as the SDK's own ASSERT
@@ -82,13 +87,17 @@ static int bs_watchdog_check(bs_watchdog *w, uint32_t now_ms, uint32_t loops, in
     for (k = 1; k < w->count; k++) {
         i = (w->next + BS_WD_SAMPLES - 1u - k) % BS_WD_SAMPLES;
         span = now_ms - w->ms[i];
-        if (span < BS_WD_STALL_MS) continue;
+        /* Judge on the newest sample at least a minute old; with a full history
+         * also on the oldest one, even if timer_get_ms() makes it a little short. */
+        if (span < BS_WD_STALL_MS && !(k == w->count - 1u && w->count == BS_WD_SAMPLES))
+            continue;
         progressed = loops - w->loops[i];
-        if ((uint64_t)progressed * 60000u < (uint64_t)BS_WD_MIN_LOOPS_PER_MIN * span)
-            w->stalled_ms = span;
+        if (progressed == 0
+            || (uint64_t)progressed * 60000u < (uint64_t)BS_WD_MIN_LOOPS_PER_MIN * span)
+            w->stalled_ms = span ? span : 1u;
         return w->stalled_ms != 0;
     }
-    return 0;   /* less than a minute of history yet */
+    return 0;   /* less than a full history yet */
 }
 
 typedef struct {

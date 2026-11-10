@@ -82,6 +82,37 @@ static void test_watchdog(void)
     assert(!run(&w, &t, &loops, 12, 0, 0) && w.exempt == 0);   /* fresh window: needs 60 s of history */
     assert(run(&w, &t, &loops, 1, 0, 0));
 
+    /* Callbacks slightly faster than 5 s by timer_get_ms(): 12 periods are under a
+     * minute. The old rule never decided (2026-11-10); a full stall must still reset
+     * once the history is full, and normal progress must not. */
+    {
+        static const uint32_t periods[] = {4999, 4990, 4500, 5001};
+        unsigned p;
+        for (p = 0; p < sizeof periods / sizeof periods[0]; p++) {
+            w = (bs_watchdog){0}; reset = 0;
+            assert(!bs_watchdog_check(&w, t, loops, 0));
+            for (i = 0; i < 40 && !reset; i++) {
+                t += periods[p];
+                reset = bs_watchdog_check(&w, t, loops, 0);
+            }
+            assert(reset && i == 12);
+            w = (bs_watchdog){0}; reset = 0;
+            for (i = 0; i < 200; i++) {
+                t += periods[p]; loops += 5;            /* ~1 pass/s: idle lock wait */
+                reset |= bs_watchdog_check(&w, t, loops, 0);
+            }
+            assert(!reset);
+        }
+    }
+    /* timer_get_ms() frozen: no progress over a full history resets anyway. */
+    w = (bs_watchdog){0};
+    for (i = 0; i < 12; i++) assert(!bs_watchdog_check(&w, t, loops, 0));
+    assert(bs_watchdog_check(&w, t, loops, 0) && w.stalled_ms == 1);
+    /* ...but with progress it does not. */
+    w = (bs_watchdog){0}; reset = 0;
+    for (i = 0; i < 40; i++) { loops += 5; reset |= bs_watchdog_check(&w, t, loops, 0); }
+    assert(!reset);
+
     /* Millisecond and loop counter wrap. */
     w = (bs_watchdog){0};
     t = 0xFFFFF000u; loops = 0xFFFFFF00u;

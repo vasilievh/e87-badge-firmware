@@ -83,6 +83,10 @@ itself. RAM only; nothing is written to flash.
   wait). It starts in `jl_gui_init()`, before the boot-time screen build and suspend,
   and is exempt while the Update screen is open or an update runs. Holding a button in a
   "wait for release" loop also resets: about 30 s from the lock screen, about 60 s awake.
+  Before 2026-11-10 the check only decided once a stored sample was at least 60 s old;
+  13 samples hold 12 periods, so callbacks even 1 ms faster than 5 s (by
+  `timer_get_ms()`) meant it never decided. It now also decides on the oldest sample of
+  a full history, and on zero progress over a full history whatever the measured span.
   The reset disables interrupts and spins, so the SDK's hardware watchdog
   (`WDT_LRC_4S` while running, `WDT_16S` during setup) resets the chip, the same path as
   an SDK `ASSERT` in this debug-UART build; `cpu_reset()` is only a late fallback. The
