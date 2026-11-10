@@ -6,6 +6,24 @@ next person from chasing them again. Newest incident first.
 Status: **open** (not yet tested), **supported** (evidence agrees, not proven),
 **confirmed** (measured), **rejected** (evidence contradicts).
 
+## 2026-11-10 (second): no wake after suspending on USB
+
+Symptom: same firmware as below (`fix/lock-power` `eb5a1f5`). After the drain-and-charge
+recovery the badge worked normally on USB; it was suspended while charging. The next
+wake attempt got no reaction at all: backlight stayed off, keys and the button-hold reset
+did nothing. USB was then removed to let the battery drain.
+
+Firmware identity (artifact digests of the Badge Display runs match the owner's local
+copies): the 2026-11-09 hang ran `feat/ble-display` `468a76e` (no `badge_safety.h`, no
+`badge_idle_*`); both 2026-11-10 hangs ran `fix/lock-power` `eb5a1f5`. `patches/` (the wake
+path in `badge-menu.patch`) is identical between the two.
+
+| Hypothesis | Status | Evidence / how to test |
+|---|---|---|
+| The fault is in the wake path shared by all three builds (upstream `badge_lock_wake()`, SDK `lcd_sleep_ctrl(0)` / re-init / first redraw), not in the safety net or the idle wait | supported | Three hangs on wake from suspend, on two builds whose wake code is identical; the one without the safety net and idle wait hung the same way. |
+| This time the hang was before the backlight: `lcd_reinit_wait_finish()` (SDK `lcd_drive.c`) pends on the re-init semaphore with no timeout | open | Code reading only: the backlight stayed off, and the only earlier steps are the re-init wait and the `while (is_lcd_busy);` spin at the top of `lcd_sleep_ctrl()`. The key may also simply not have been taken. |
+| USB attached while suspended matters | open | Two of three hangs followed a suspend on USB (2026-11-09, this one); the first 2026-11-10 hang was on battery, so USB is not required. |
+
 ## 2026-11-10: hang on key wake during the button-hold reset test
 
 Symptom: firmware `fix/lock-power` with the safety net (`badge_safety.h`), on battery, not
@@ -36,7 +54,8 @@ few tens of seconds, ignored touch and almost all key presses, and the badge got
 Unplugging USB did not help; holding both buttons for 15 s did not reset it. It stayed in
 that state until the battery was completely drained (about 3.5 h); after charging it booted
 normally. This confirms the last-resort recovery for a hang on this unit: drain fully, then
-charge for a cold boot. Firmware: `dev` before the resource catalogue.
+charge for a cold boot. Firmware: `feat/ble-display` `468a76e` (identified by artifact digest on
+2026-11-10).
 
 | Hypothesis | Status | Evidence / how to test |
 |---|---|---|
