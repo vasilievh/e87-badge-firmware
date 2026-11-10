@@ -6,6 +6,26 @@ next person from chasing them again. Newest incident first.
 Status: **open** (not yet tested), **supported** (evidence agrees, not proven),
 **confirmed** (measured), **rejected** (evidence contradicts).
 
+## 2026-11-11 (second): hang on pressing Update again, empty battery on USB
+
+Symptom: same firmware. Drained, booted on the charger, woken and taken straight to
+Update: hung at once, as in the previous entry. Unplugged, it died immediately (battery
+empty).
+
+Upstream documents this: `badge-menu.patch` README, "powering the device from USB and battery
+at the same time can hang it", and `badge_charge_screen_enter()` parked the whole UI on USB
+with backlight and radio off to keep the radio off "the sagging 5V rail that browns the
+board out". The system overlay removes that charge screen in every build that hung
+(`468a76e` and `eb5a1f5`), and bypasses the low-battery BLE gate on USB.
+
+| Hypothesis | Status | Evidence / how to test |
+|---|---|---|
+| Running on USB with the battery sharing the supply locks the board up (upstream's documented brownout), made likely by our removal of the charge screen | supported | Five of six hangs were on USB: 2026-11-09 (woken on USB), 2026-11-10 second (woken after suspend on USB), third (awake in the menu on USB), and both 2026-11-11 (Update pressed on USB, radio starting, battery empty). The one on battery (first 2026-11-10, 47%) is the exception. Never a reset and no radio afterwards fits an electrical lockup better than a software wait. Test: keep the badge asleep and untouched on USB, unplug, then use and flash on battery only. |
+
+If this holds, the watchdog cannot help on USB (a locked-up chip does not run it), and the
+fix is to restore upstream's USB behaviour (radio and UI parked while charging) rather than
+anything in the wake path.
+
 ## 2026-11-11: hang on pressing Update
 
 Symptom: firmware `fix/lock-power` `eb5a1f5`, shortly after the drain-and-charge recovery
@@ -93,7 +113,7 @@ charge for a cold boot. Firmware: `feat/ble-display` `468a76e` (identified by ar
 |---|---|---|
 | Floating panel TE pin causes an interrupt storm while the panel is off: `lcd_drv_power_off()` sets PC00 to `PORT_HIGHZ` but its falling-edge IRQ stays armed (SDK `lcd_drive.c`) | open | Code reading only. Guard and counter added in `badge_safety.h`; after a suspend, `qix_ble.safety` `last_sleep.te_per_second` near 0 with the guard. An overnight lock drain much lower than the earlier 100% → 11% would support it. |
 | Display or touch re-init failed at wake, leaving every frame flush waiting on the panel | open | Fits black-then-image and slowness that survived unplugging; not measured. The TE counter and the UI watchdog give evidence and a way out next time. |
-| Radio on USB browns the board out (upstream's reason for the charge screen) | open | Documented upstream; the system overlay removed that protection. Test: drained battery, USB, Scanner/Display open 10-15 min. |
+| Radio on USB browns the board out (upstream's reason for the charge screen) | supported (2026-11-11) | Documented upstream; the system overlay removed that protection. Test: drained battery, USB, Scanner/Display open 10-15 min. |
 | BLE stack hogging the CPU | rejected | BLE is off in the menu; "BLUETOOTH LOCKED" only refuses to turn it on and changes no radio state. |
 | Touch I2C bit-banging starves the UI | rejected as sole cause | Reads are bounded (200 µs clock-stretch cap), worst case ~15 ms of every 20 ms poll; cannot stop the UI by itself. |
 | ADKEY scan blocks on a PMU ADC conversion in timer context | rejected | E87 path uses `adc_get_value()`, which reads the sampling queue (SDK `gpadc.h`), not a blocking conversion. |
