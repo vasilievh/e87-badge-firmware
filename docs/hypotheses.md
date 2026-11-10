@@ -22,6 +22,16 @@ board out". The system overlay removes that charge screen in every build that hu
 |---|---|---|
 | Running on USB with the battery sharing the supply locks the board up (upstream's documented brownout), made likely by our removal of the charge screen | supported | Five of six hangs were on USB: 2026-11-09 (woken on USB), 2026-11-10 second (woken after suspend on USB), third (awake in the menu on USB), and both 2026-11-11 (Update pressed on USB, radio starting, battery empty). The one on battery (first 2026-11-10, 47%) is the exception. Never a reset and no radio afterwards fits an electrical lockup better than a software wait. Test: keep the badge asleep and untouched on USB, unplug, then use and flash on battery only. |
 
+Owner's experiment the same night, battery near empty after the cold boot on the charger:
+unplugging USB while awake either froze the badge on the current screen, or opened the
+Display or Bluetooth Scanner tool on its own (the first and last menu entries). Unplugged
+on the lock image it always froze.
+
+| Hypothesis | Status | Evidence / how to test |
+|---|---|---|
+| With a near-empty battery, unplugging USB is a brownout: the board locks up instead of resetting | open | Fits the frozen screens and the earlier "died immediately" on unplug. Expected with an empty cell; says nothing yet about a charged one. Test: the same unplug with a charged battery. |
+| Supply transitions produce phantom key presses: the buttons are read through an ADC ladder (`adkey`), whose reading shifts when the supply drops | open | Tools opening by themselves on unplug. Test: unplug with a charged battery in the menu; a phantom selection then would point at the key ladder, not only at the empty cell. |
+
 If this holds, the watchdog cannot help on USB (a locked-up chip does not run it), and the
 fix is to restore upstream's USB behaviour (radio and UI parked while charging) rather than
 anything in the wake path.
