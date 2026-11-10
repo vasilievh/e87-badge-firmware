@@ -11,7 +11,8 @@ Status: **open** (not yet tested), **supported** (evidence agrees, not proven),
 Symptom: same firmware as below (`fix/lock-power` `eb5a1f5`). After the drain-and-charge
 recovery the badge worked normally on USB; it was suspended while charging. The next
 wake attempt got no reaction at all: backlight stayed off, keys and the button-hold reset
-did nothing. USB was then removed to let the battery drain.
+did nothing. USB was then removed to let the battery drain; after the drain it booted
+normally on the charger (third time drain-then-charge recovered it).
 
 Firmware identity (artifact digests of the Badge Display runs match the owner's local
 copies): the 2026-11-09 hang ran `feat/ble-display` `468a76e` (no `badge_safety.h`, no
