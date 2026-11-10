@@ -6,6 +6,19 @@ next person from chasing them again. Newest incident first.
 Status: **open** (not yet tested), **supported** (evidence agrees, not proven),
 **confirmed** (measured), **rejected** (evidence contradicts).
 
+## 2026-11-11: hang on pressing Update
+
+Symptom: firmware `fix/lock-power` `eb5a1f5`, shortly after the drain-and-charge recovery
+from the 2026-11-10 (third) hang, on USB, charging from empty. It hung as soon as Update
+was pressed; touch and buttons ignored. `qix_ble.safety` and `qix_ble.power` did not find
+the badge, so the radio was not running. Fifth hang in about a day; three of the last four
+came soon after charging from empty.
+
+| Hypothesis | Status | Evidence / how to test |
+|---|---|---|
+| Low battery while charging from empty makes the hangs much more likely | open | 2026-11-10 (second), (third) and this one all came soon after a cold boot on the charger from empty; the first 2026-11-10 hang was on battery at 47%, 2026-11-09 on USB at 100%. Test: charge suspended overnight without waking, unplug, then wake and flash on battery above 30%. |
+| Opening Update itself triggers the hang | open | One case; Update has worked many times before on the same firmware. Likely coincidence with the high hang rate, not shown. |
+
 ## 2026-11-10 (third): hang while awake on USB
 
 Symptom: firmware `fix/lock-power` `eb5a1f5`. After the drain-and-charge recovery the badge
