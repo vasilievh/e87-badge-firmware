@@ -6,6 +6,19 @@ next person from chasing them again. Newest incident first.
 Status: **open** (not yet tested), **supported** (evidence agrees, not proven),
 **confirmed** (measured), **rejected** (evidence contradicts).
 
+## 2026-11-10 (third): hang while awake on USB
+
+Symptom: firmware `fix/lock-power` `eb5a1f5`. After the drain-and-charge recovery the badge
+was left awake in the menu at minimum brightness, charging, never suspended. Later it was
+found hung: touch and both buttons ignored, the status bar showing 9%. When it hung is
+unknown. USB removed to let it drain.
+
+| Hypothesis | Status | Evidence / how to test |
+|---|---|---|
+| The hangs need a sleep/wake transition | rejected | This one happened awake, with no suspend since boot. The wake path is still where three of four hangs happened, but the fault can also hit during ordinary drawing. |
+| The fault is a display transfer whose completion is lost (see the wake-path review rows) | open | Fits a hang during ordinary drawing as well as around sleep and wake. `fix/wake-diag` would report it as 7 pulses when awake. |
+| Low battery while charging matters | open | Charging from empty this time; 2026-11-09 was at 100% on USB, and the first 2026-11-10 hang was on battery at 47%. |
+
 ## 2026-11-10 (second): no wake after suspending on USB
 
 Symptom: same firmware as below (`fix/lock-power` `eb5a1f5`). After the drain-and-charge
