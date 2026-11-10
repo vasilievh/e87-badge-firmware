@@ -45,18 +45,26 @@ static void test_watchdog(void)
     assert(!run(&w, &t, &loops, 11, 0, 0));
     assert(run(&w, &t, &loops, 1, 0, 0));
 
-    /* Below the floor (0.2/s) resets; above it (0.4/s) does not. */
+    /* Below the floor (0.4/s) resets; above it (0.6/s) does not. */
     w = (bs_watchdog){0};
-    assert(run(&w, &t, &loops, 13, 1, 0));
+    assert(run(&w, &t, &loops, 13, 2, 0));
     w = (bs_watchdog){0};
-    assert(!run(&w, &t, &loops, 60, 2, 0));
+    assert(!run(&w, &t, &loops, 60, 3, 0));
 
-    /* fix/lock-power lock (~1/s), then a button held 40 s, then awake: no reset. */
+    /* fix/lock-power lock (~1/s), then a button held 25 s, then awake: no reset. */
     w = (bs_watchdog){0};
     assert(!run(&w, &t, &loops, 12, 5, 0));
-    assert(!run(&w, &t, &loops, 8, 0, 0));
+    assert(!run(&w, &t, &loops, 5, 0, 0));
     assert(!run(&w, &t, &loops, 12, 500, 0));
-    /* Holding it a full minute: reset (documented). */
+    /* Held 35 s from the lock screen: reset (documented, about 30 s). */
+    w = (bs_watchdog){0};
+    assert(!run(&w, &t, &loops, 12, 5, 0));
+    assert(run(&w, &t, &loops, 7, 0, 0));
+    /* Held 55 s while awake: no reset; a full minute: reset (documented). */
+    w = (bs_watchdog){0};
+    assert(!run(&w, &t, &loops, 12, 500, 0));
+    assert(!run(&w, &t, &loops, 11, 0, 0));
+    assert(!run(&w, &t, &loops, 12, 500, 0));
     w = (bs_watchdog){0};
     assert(!bs_watchdog_check(&w, t, loops, 0));
     assert(run(&w, &t, &loops, 12, 0, 0));
