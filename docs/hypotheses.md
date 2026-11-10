@@ -6,6 +6,25 @@ next person from chasing them again. Newest incident first.
 Status: **open** (not yet tested), **supported** (evidence agrees, not proven),
 **confirmed** (measured), **rejected** (evidence contradicts).
 
+## 2026-11-10: hang on key wake during the button-hold reset test
+
+Symptom: firmware `fix/lock-power` with the safety net (`badge_safety.h`), on battery, not
+charging. Diagnostics read from the Update screen shortly before: 3824 mV (47%), uptime
+about 39 min. The badge was then suspended (dark) and woken with Button 2 for the
+button-hold reset test; the owner may have pressed twice and then held. The backlight came
+on, but nothing was ever drawn: black screen, touch and both buttons ignored, a second long
+hold changed nothing. Unlike 2026-11-09 it never reached the wallpaper or the menu. No reset
+happened at any point (the backlight stayed on; a reset boots suspended with it off). It
+stayed like that until the battery was fully drained; after charging it boots and works
+normally. Second confirmation of drain-then-charge as the only recovery. The radio was off,
+so `qix_ble.safety` / `qix_ble.power` could not be read during the hang.
+
+| Hypothesis | Status | Evidence / how to test |
+|---|---|---|
+| The safety net did not act during this hang: the UI watchdog timer did not run, did not see a stall, or `bs_reset()` ran and neither the hardware watchdog nor the `cpu_reset()` fallback reset the chip | open | The fallback alone fires within minutes of `bs_reset()`, yet nothing reset in hours. Cannot yet tell which part failed; whatever stops the UI here also defeats the safety reset. |
+| The hang is after the panel re-init, not inside it | open | Code reading: `badge_lock_wake()` turns the backlight on only after `lcd_reinit_wait_finish()` returns, and the backlight was on. Unless the SDK's re-init turns the backlight on itself (not checked), the hang is in the touch re-enable, the wait-for-release loop or the first redraw. |
+| A second key press while `badge_lock_wake()` is still running causes the hang | open | The owner may have pressed twice. No mechanism found yet: the extra press only sets `badge_key_wake`, which the next Lock clears. Test: single short presses only for a while, then compare. |
+
 ## 2026-11-09: hang after waking on USB
 
 Symptom: badge suspended with Button 1 while charging at 100%, woken with Button 2. Screen
@@ -26,4 +45,4 @@ charge for a cold boot. Firmware: `dev` before the resource catalogue.
 | ADKEY scan blocks on a PMU ADC conversion in timer context | rejected | E87 path uses `adc_get_value()`, which reads the sampling queue (SDK `gpadc.h`), not a blocking conversion. |
 | Charge-screen loop spinning | rejected | That loop is removed by `prepare-badge-system.py`. |
 | `fix/lock-power` clock release saves power | rejected | `lcd_sleep_ctrl()` already releases and re-takes the `ui_show` clock lock; the extra calls were removed. |
-| The SDK hardware watchdog (`WDT_LRC_4S` at run time) resets the badge when interrupts stay off; the safety reset relies on it | open | Code reading: this build's SDK `ASSERT` is `local_irq_disable(); while (1);` and nothing else resets it. Test: hold button 2 on the dark lock screen; a reset within about 35-40 s confirms the path (the `cpu_reset()` fallback would take far longer). |
+| The SDK hardware watchdog (`WDT_LRC_4S` at run time) resets the badge when interrupts stay off; the safety reset relies on it | open | Code reading: this build's SDK `ASSERT` is `local_irq_disable(); while (1);` and nothing else resets it. Test: hold button 2 on the dark lock screen; a reset within about 35-40 s confirms the path (the `cpu_reset()` fallback would take far longer). 2026-11-10: the test run hung on wake instead and never reset (see that entry), so the result says nothing about this path on its own. |
