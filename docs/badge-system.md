@@ -78,12 +78,18 @@ itself. RAM only; nothing is written to flash.
 - **TE counter.** A strong `lv_lcd_te_sync_int_handler()` (the SDK's is an empty
   weak hook in the LVGL build) counts TE interrupts, in total and per panel sleep.
 - **UI watchdog.** A hardware-timer callback samples the LVGL loop counter every 5 s and
-  resets the CPU (`local_irq_disable(); cpu_reset();`, the SDK's own ASSERT path) when,
-  over the last minute of wall time, the loop made fewer than 15 passes. Normal: ~100/s
-  awake, ~33/s suspended (~1/s with the fix/lock-power wait). It starts in `jl_gui_init()`,
-  before the boot-time screen build and suspend, and is exempt while the Update screen is
-  open or an update runs. Holding a button for roughly 45-60 s in a "wait for release"
-  loop also resets.
+  resets the badge when, over the last minute of wall time, the loop made fewer than 30
+  passes (0.5/s). Normal: ~100/s awake, ~33/s suspended (~1/s with the fix/lock-power
+  wait). It starts in `jl_gui_init()`, before the boot-time screen build and suspend,
+  and is exempt while the Update screen is open or an update runs. Holding a button in a
+  "wait for release" loop also resets: about 30 s from the lock screen, about 60 s awake.
+  The reset disables interrupts and spins, so the SDK's hardware watchdog
+  (`WDT_LRC_4S` while running, `WDT_16S` during setup) resets the chip, the same path as
+  an SDK `ASSERT` in this debug-UART build; `cpu_reset()` is only a late fallback. The
+  overlay refuses to build if that watchdog configuration changes.
+  A hang that repeats on every boot becomes a reset loop instead of one permanent hang.
+  Neither reaches the Update screen; the watchdog only helps with faults that do not
+  recur on the next boot, so an image must still be checked before it is flashed.
 - **Diagnostics.** With Display or Update open: `python -m qix_ble.safety ADDRESS`
   (Qix 0x97 -> 0x98, read-only). After a suspend, `last_sleep.te_per_second` near
   zero means the guard works; thousands per second would confirm the storm.

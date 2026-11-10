@@ -24,7 +24,10 @@ def sdk(tmp_path):
     # Unchanged vendor TE configuration that badge_safety.h depends on (pinned SDK).
     for name, text in ((system.SDK_CONFIG, "#define TCFG_LCD_PIN_TE IO_PORTC_00 // LCD TE\r\n"),
                        (system.BOARD_CFG, "#define TCFG_LCD_TE_USED_PEND 1\n"
-                                          "#define TCFG_LCD_TE_IO      TCFG_LCD_PIN_TE\n")):
+                                          "#define TCFG_LCD_TE_IO      TCFG_LCD_PIN_TE\n"
+                                          "#define   WDT_APP_INIT_TIME\t\t\tWDT_16S\t\t//\r\n"
+                                          "#define   WDT_APP_RUN_TIME\t\t\tWDT_LRC_4S\t//\r\n"),
+                       (system.APP_MAIN, "    //\n    wdt_init(WDT_APP_RUN_TIME);\n")):
         target = tmp_path / name
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(text.encode())
@@ -110,7 +113,7 @@ def test_idle_keeps_key_scanner_and_leaves_clock_to_the_sdk(sdk):
     assert "badge_idle_release_clock" not in ui and "badge_idle_restore_clock" not in ui
     assert enter.index("badge_idle_prepare_lock();") < enter.index("g_badge_locked = 1;")
     assert wake.index("badge_idle_exit();") < wake.index("lcd_sleep_ctrl(0)")
-    # Both watchdog hooks coexist with the idle wait (~1 loop/s while locked).
+    # Both watchdog hooks coexist with the idle wait (~1 loop/s, floor 0.5/s).
     assert ui.count("badge_safety_ui_tick();") == 1 and ui.count("badge_safety_start();") == 1
     assert "if (g_badge_locked) badge_idle_wait();" in ui
     assert "if (badge_idle_take_key_wake() || g_badge_adkey_kv != NO_KEY)" in ui
@@ -148,6 +151,20 @@ def test_check_covers_board_copy_of_semaphore_header(sdk):
     target.write_bytes(target.read_bytes() + b"\n/* drift */\n")
     with pytest.raises(ValueError, match="outside"):
         system.check(sdk)
+
+
+@pytest.mark.parametrize("name,old,new", [
+    ("BOARD_CFG", "WDT_LRC_4S", "WDT_LRC_32S"),
+    ("BOARD_CFG", "WDT_16S", "WDT_32S"),
+    ("APP_MAIN", "wdt_init(WDT_APP_RUN_TIME);", "/* wdt_init(WDT_APP_RUN_TIME); */"),
+])
+def test_hardware_watchdog_drift_is_rejected_before_writes(sdk, name, old, new):
+    path = sdk / getattr(system, name)
+    path.write_text(path.read_text(encoding="utf8").replace(old, new), encoding="utf8")
+    before = (sdk / system.UI).read_bytes()
+    with pytest.raises(ValueError, match="Hardware watchdog"):
+        system.prepare(sdk)
+    assert (sdk / system.UI).read_bytes() == before
 
 
 def test_te_pin_configuration_drift_is_rejected_before_writes(sdk):

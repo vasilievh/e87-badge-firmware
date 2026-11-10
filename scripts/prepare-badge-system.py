@@ -9,6 +9,7 @@ import argparse
 import hashlib
 import importlib.util
 import json
+import re
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -22,6 +23,7 @@ BOARD = "SDK/apps/watch/board/br35/board_ac707n_demo/board_ac707n_demo.c"
 ADKEY = "SDK/apps/common/device/key/adkey.c"
 SDK_CONFIG = "SDK/apps/watch/board/br35/sdk_config.h"
 BOARD_CFG = "SDK/apps/watch/board/br35/board_ac707n_demo/board_ac707n_demo_cfg.h"
+APP_MAIN = "SDK/apps/watch/app_main.c"
 MANIFEST = ".badge-system-overlay.json"
 HEADERS = {
     "badge_system_ui.h": str(Path(UI).with_name("badge_system_ui.h")),
@@ -92,6 +94,13 @@ def prepare(sdk):
                          (BOARD_CFG, "#define TCFG_LCD_TE_IO      TCFG_LCD_PIN_TE\n")):
         if needle not in (sdk / name).read_text(encoding="utf8", errors="replace").replace("\r\n", "\n"):
             raise ValueError(f"TE pin configuration changed in {name}; review badge_safety.h")
+    # The safety watchdog resets by disabling interrupts and letting the SDK's
+    # hardware watchdog fire (badge_safety.h, bs_reset). Refuse to build without it.
+    for name, pattern in ((BOARD_CFG, r"^#define\s+WDT_APP_INIT_TIME\s+WDT_16S\b"),
+                          (BOARD_CFG, r"^#define\s+WDT_APP_RUN_TIME\s+WDT_LRC_4S\b"),
+                          (APP_MAIN, r"^\s*wdt_init\(WDT_APP_RUN_TIME\);")):
+        if not re.search(pattern, (sdk / name).read_text(encoding="utf8", errors="replace"), re.M):
+            raise ValueError(f"Hardware watchdog configuration changed in {name}; review badge_safety.h")
     # Remove the exclusive black charge page; existing main/menu screens remain usable.
     start = ui.index("static void badge_charge_render(void)")
     end = ui.index("/* ---- BLE-updatable lock wallpaper", start)

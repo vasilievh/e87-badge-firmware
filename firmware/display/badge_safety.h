@@ -18,9 +18,14 @@
  *    activity inside a long stall do not hide it. The loop normally runs ~100
  *    times/s (~33/s while suspended, ~1/s with the fix/lock-power wait). It starts
  *    in jl_gui_init(), before the boot-time screen build and suspend, and is exempt
- *    while the Update screen is open or an update is active. Holding a button for
- *    roughly 45-60 s inside a "wait for release" loop also stalls the UI loop and
- *    therefore resets the badge.
+ *    while the Update screen is open or an update is active. Holding a button
+ *    inside a "wait for release" loop also stalls the UI loop: about 30 s from the
+ *    lock screen, about 60 s when awake, then the badge resets.
+ *    Reset: interrupts off, then spin, so the SDK's hardware watchdog
+ *    (wdt_init(WDT_APP_RUN_TIME) = WDT_LRC_4S in app_main.c, WDT_16S during setup;
+ *    checked by prepare-badge-system.py) resets the chip, as the SDK's own ASSERT
+ *    does in this debug-UART build. No PMU access from interrupt context unless
+ *    that watchdog has failed to fire (then cpu_reset() as a last resort).
  *
  * Read-only diagnostics over Qix (BLE on, e.g. on the Update screen):
  *   request 0x97 'B' 'S' 1 page(0..2) -> reply 0x98, 14 bytes:
@@ -38,7 +43,7 @@
 #define BS_REPLY 0x98
 #define BS_PAGE_SIZE 14
 #define BS_WD_PERIOD_MS 5000u
-#define BS_WD_MIN_LOOPS_PER_MIN 15u   /* 0.25 passes/s over the last minute */
+#define BS_WD_MIN_LOOPS_PER_MIN 30u   /* 0.5 passes/s over the last minute */
 #define BS_WD_STALL_MS 60000u
 #define BS_WD_SAMPLES 13u   /* 12 periods of BS_WD_PERIOD_MS = BS_WD_STALL_MS */
 #ifndef BADGE_SAFETY_WATCHDOG
@@ -196,18 +201,32 @@ static inline void badge_safety_ui_tick(void)
     bs_ui_loops++;
 }
 
+#define BS_RESET_FALLBACK_SPINS 0x40000000u   /* tens of s at 240 MHz, minutes at 24 MHz */
+/* SDK reference (cpu/br35/setup.c, cpu_assert_debug):
+ *   CONFIG_DEBUG_ENABLE (TCFG_DEBUG_UART_ENABLE 1, this build): local_irq_disable(); while (1);
+ *   release build: P3_PCNT_SET0 = 0xac; cpu_reset();   (cpu_reset() = p33_soft_reset())
+ * We take the first: with interrupts off nothing clears the hardware watchdog, which
+ * then resets the chip. p33_soft_reset() is a PMU (P33) access and could interleave
+ * with a P33 transfer of the interrupted task, so it is only the fallback for a
+ * watchdog that did not fire. */
+static void bs_reset(void)
+{
+    volatile uint32_t spin;
+    local_irq_disable();
+    for (spin = 0; spin < BS_RESET_FALLBACK_SPINS; spin++) { }
+    cpu_reset();
+    for (;;) { }
+}
+
 /* Hardware-timer context (same timer class as the ADKEY scan), so it still runs
- * when tasks are starved. The reset mirrors the SDK's own ASSERT path
- * (cpu/br35/setup.c cpu_assert_debug: local_irq_disable(); cpu_reset();), which
- * runs from any context, interrupts included. */
+ * when tasks are starved. */
 static void bs_watchdog_timer(void *priv)
 {
     (void)priv;
     if (bs_watchdog_check(&bs_wd, timer_get_ms(), bs_ui_loops,
                           g_badge_update_active || g_on_update_scr)) {
 #if BADGE_SAFETY_WATCHDOG
-        local_irq_disable();
-        cpu_reset();
+        bs_reset();
 #endif
     }
 }
