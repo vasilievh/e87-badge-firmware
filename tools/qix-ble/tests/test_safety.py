@@ -11,10 +11,13 @@ def frame(page, data):
     return QixFrame(flags=2, cmd=0x98, payload=b"BS" + bytes((1, page)) + data)
 
 
-def responses(flags=2, last=(1800000, 3600), now=(0, 0)):
-    return [frame(0, struct.pack("<IIBB", 1800120, 987654, flags, 0)),
-            frame(1, struct.pack("<IIH", *last, 0)),
-            frame(2, struct.pack("<IIH", *now, 0))]
+def responses(flags=2, last=(1800000, 3600), now=(0, 0), page3=(470, 5, 0, 4999, 5000)):
+    pages = [frame(0, struct.pack("<IIBB", 1800120, 987654, flags, 0)),
+             frame(1, struct.pack("<IIH", *last, 0)),
+             frame(2, struct.pack("<IIH", *now, 0))]
+    if page3 is not None:
+        pages.append(frame(3, struct.pack("<IBBHH", *page3)))
+    return pages
 
 
 def test_status_reports_te_rate_of_last_sleep_with_read_only_commands():
@@ -24,8 +27,12 @@ def test_status_reports_te_rate_of_last_sleep_with_read_only_commands():
     assert status["last_sleep"] == {"seconds": 3600, "te_interrupts": 1800000,
                                     "te_per_second": 500.0}
     assert status["current_sleep"] is None and status["ui_loops"] == 987654
-    assert transport.sent == [(0x97, b"BS" + bytes((1, page)), 2) for page in range(3)]
-    assert transport.write_modes == [(0x97, True, False)] * 3
+    assert transport.sent == [(0x97, b"BS" + bytes((1, page)), 2) for page in range(4)]
+    assert transport.write_modes == [(0x97, True, False)] * 4
+    assert status["watchdog"] == {"timer_calls": 470, "stage": 5,
+                                  "stage_name": "waking: waiting for panel re-init",
+                                  "blinking": False, "last_interval_ms": 4999,
+                                  "last_interval_jiffies_ms": 5000}
     assert all(len(reply.encode()) == 20 for reply in responses())
 
 
@@ -60,4 +67,21 @@ def test_unknown_flags_are_rejected():
 
 def test_invalid_page_is_refused_locally():
     with pytest.raises(ValueError):
-        SafetyClient(MockTransport()).page(3)
+        SafetyClient(MockTransport()).page(4)
+
+
+def test_older_firmware_without_page_3_still_reports():
+    transport = MockTransport()
+    transport.queue_responses(*responses(page3=None))
+    status = SafetyClient(transport, timeout=0.01).status()
+    assert status["watchdog"] is None and status["ui_loops"] == 987654
+
+
+def test_blinking_flag_and_unknown_page_3_flags():
+    transport = MockTransport()
+    transport.queue_responses(*responses(page3=(9, 8, 1, 65535, 0)))
+    assert SafetyClient(transport).status()["watchdog"]["blinking"] is True
+    transport = MockTransport()
+    transport.queue_responses(*responses(page3=(9, 8, 2, 0, 0)))
+    with pytest.raises(SafetyError):
+        SafetyClient(transport).status()

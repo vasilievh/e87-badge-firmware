@@ -3,7 +3,9 @@
 Open Bluetooth Display or Update (without starting an update), then run:
     python -m qix_ble.safety ADDRESS
 Reports how many display TE interrupts fired (in total and during the last
-panel sleep) and how far the UI loop has advanced. Nothing is written to the
+panel sleep), how far the UI loop has advanced and, on firmware that has it,
+whether the watchdog timer runs and which sleep/wake step the UI is in
+(page 3; older firmware does not answer it). Nothing is written to the
 badge: no bootstrap, pairing, flash, reset, OTA or display commands are sent.
 """
 from __future__ import annotations
@@ -19,6 +21,20 @@ from qix_ble.errors import QixError
 
 CMD, REPLY = 0x97, 0x98
 ASLEEP, LAST_VALID, EXEMPT = 1, 2, 4
+BLINKING = 1
+PAGES = 4
+# BS_STAGE_* in badge_safety.h; also the number of backlight pulses before a watchdog reset.
+STAGES = {
+    1: "awake",
+    2: "entering sleep (lcd_sleep_ctrl(1))",
+    3: "asleep",
+    4: "waking: panel power (lcd_sleep_ctrl(0))",
+    5: "waking: waiting for panel re-init",
+    6: "woken: backlight, touch, key release",
+    7: "drawing (lv_timer_handler)",
+    8: "drawing with the panel asleep (boot or right after Button 1 suspend)",
+    9: "booting",
+}
 
 
 class SafetyError(RuntimeError):
@@ -30,8 +46,8 @@ class SafetyClient:
         self.transport, self.timeout = transport, timeout
 
     def page(self, page):
-        if page not in range(3):
-            raise ValueError("safety page must be 0..2")
+        if page not in range(PAGES):
+            raise ValueError("safety page must be 0..3")
         request = b"BS" + bytes((1, page))
         deadline = time.monotonic() + self.timeout
         frame = self.transport.send_command(CMD, request, flags=2, expect_cmd=REPLY,
@@ -46,6 +62,23 @@ class SafetyClient:
             if remaining <= 0:
                 raise SafetyError("no matching safety response")
             frame = self.transport.wait_for_cmd(REPLY, timeout=remaining)
+
+    def watchdog(self):
+        """Page 3, or None when the firmware predates it (it does not answer)."""
+        try:
+            calls, stage, flags, interval, interval_jiffies = struct.unpack("<IBBHH", self.page(3))
+        except (SafetyError, QixError):
+            return None
+        if flags & ~BLINKING:
+            raise SafetyError("invalid safety response fields")
+        return {
+            "timer_calls": calls,
+            "stage": stage,
+            "stage_name": STAGES.get(stage, "unknown"),
+            "blinking": bool(flags & BLINKING),
+            "last_interval_ms": interval,
+            "last_interval_jiffies_ms": interval_jiffies,
+        }
 
     def status(self):
         te_total, ui_loops, flags, stalled_s = struct.unpack("<IIBB", self.page(0))
@@ -66,6 +99,7 @@ class SafetyClient:
             "watchdog_stalled_s": stalled_s,
             "last_sleep": sleep(last_te, last_s) if flags & LAST_VALID else None,
             "current_sleep": sleep(now_te, now_s) if flags & ASLEEP else None,
+            "watchdog": self.watchdog(),
         }
 
 
