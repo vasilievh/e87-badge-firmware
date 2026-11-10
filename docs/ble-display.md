@@ -11,7 +11,7 @@ check below also covered the demo's repeated updates and custom cards. Reconnect
 leaving/reopening Display, CLEAR, long-running operation and each existing tool
 after the update still need dedicated hardware checks.
 
-Display v2: build `49f91a4` (`468a76e` before a message-only history rewrite; [Actions run 42554935192](https://github.com/vasilievh/jieli-ble-badge-research/actions/runs/42554935192),
+Display v2: build `49f91a4` (`468a76e` before a message-only history rewrite; [Actions run 42554935192](https://github.com/vasilievh/e87-badge-firmware/actions/runs/42554935192),
 application 936,544 bytes) was flashed from Windows on 2026-11-09 and the owner
 confirmed on the physical screen that, with the font pack installed, the v2 demo
 runs and shows Cyrillic, German letters and punctuation (`Привет!`,
@@ -26,7 +26,7 @@ The later [resource catalogue A/B](resources.md) changes are not included in tha
 application-size figure and still need a new vendor build and hardware checks.
 
 Historical Display v1 reference build: source commit `6fc8828c163b1ab195a5d6b7a34846a3fae2dbef`,
-[GitHub Actions run 42529018450](https://github.com/vasilievh/jieli-ble-badge-research/actions/runs/42529018450).
+[GitHub Actions run 42529018450](https://github.com/vasilievh/e87-badge-firmware/actions/runs/42529018450).
 The image is 1,079,363 bytes, SHA256
 `0147557ba8e523952c0f2b33e51e850caf547ddb4f74e035df78dc639cb3c843`.
 That build's application size was 991,264 bytes in the same fixed OTA code slot

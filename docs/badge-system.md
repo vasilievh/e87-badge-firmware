@@ -18,7 +18,7 @@ SDK checkout/import and reapply Display followed by this overlay; `--clean` alon
 does not refresh installed overlays.
 
 Previous clean SDK build (before streaming wallpaper): source `29d7d72`,
-[Actions run 42534138963](https://github.com/vasilievh/jieli-ble-badge-research/actions/runs/42534138963).
+[Actions run 42534138963](https://github.com/vasilievh/e87-badge-firmware/actions/runs/42534138963).
 The application is 991,456 bytes in the fixed 995,616-byte code slot (4,160 bytes
 remaining). The Qix OTA image SHA256 is
 `307057e204675e7457f0a68b85789812982e44037fabf2b429ce95e83c14117c`.
@@ -26,7 +26,7 @@ Offline CRC, geometry and OEM loader/configuration preservation checks passed.
 Battery/USB UI behavior and local identity still need physical confirmation.
 
 Streaming build: source `57d879d`,
-[Actions run 42536832540](https://github.com/vasilievh/jieli-ble-badge-research/actions/runs/42536832540).
+[Actions run 42536832540](https://github.com/vasilievh/e87-badge-firmware/actions/runs/42536832540).
 The application is 950,048 bytes, leaving 45,568 bytes in the same code slot.
 Image SHA256: `6397c0a4dd9f21943887b6c8bd29e8afed19eec5b6ed4e5844fdcbcb680f7868`.
 The clean SDK build and offline integrity/geometry/preservation checks passed.

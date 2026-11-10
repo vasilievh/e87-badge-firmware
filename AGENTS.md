@@ -45,7 +45,7 @@ If a task seems to need one of these, stop and describe the change and its risk 
 - `main` mirrors upstream ElectronicCats. Do not commit to it.
 - `fix/windows-ota-chunk-size` is the head of upstream PR #11. Never push to it.
 - Never open pull requests, issues or comments in the upstream ElectronicCats repository.
-  Pull requests inside this fork (base `vasilievh/jieli-ble-badge-research`, branch `dev`)
+  Pull requests inside this fork (base `vasilievh/e87-badge-firmware`, branch `dev`)
   are fine; GitHub suggests upstream as the base for forks, so always check the base.
 - `dev` is the working branch; finished, hardware-checked branches are merged into it.
 - Never rewrite published history and never force-push.

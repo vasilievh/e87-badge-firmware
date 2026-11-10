@@ -1,5 +1,6 @@
-# jieli-ble-badge-research
+# e87-badge-firmware
 
+> **Fork of [ElectronicCats/jieli-ble-badge-research](https://github.com/ElectronicCats/jieli-ble-badge-research).**
 > **Fork branches.** `main` mirrors upstream ElectronicCats. `dev` is the working
 > firmware branch (everything below). New work goes in `feat/*` / `fix/*` branches cut
 > from `dev` and merged back after a hardware check. `fix/windows-ota-chunk-size` is
