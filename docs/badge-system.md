@@ -82,11 +82,31 @@ itself. RAM only; nothing is written to flash.
   passes (0.5/s). Normal: ~100/s awake, ~33/s suspended (~1/s with the fix/lock-power
   wait). It starts in `jl_gui_init()`, before the boot-time screen build and suspend,
   and is exempt while the Update screen is open or an update runs. Holding a button in a
-  "wait for release" loop also resets: about 30 s from the lock screen, about 60 s awake.
+  "wait for release" loop also resets: about 30 s from the lock screen, about 60 s awake,
+  plus up to ~25 s of blinking (below).
   Before 2026-11-10 the check only decided once a stored sample was at least 60 s old;
   13 samples hold 12 periods, so callbacks even 1 ms faster than 5 s (by
   `timer_get_ms()`) meant it never decided. It now also decides on the oldest sample of
   a full history, and on zero progress over a full history whatever the measured span.
+- **Stage marks and blink code.** The sleep and wake steps and the draw call record
+  which step the UI is in (`BS_STAGE_*`). When the watchdog fires it first blinks the
+  backlight: 1.5 s dark, then one short pulse per stage number, three rounds (at most
+  ~25 s), then resets. Count the pulses:
+
+  | Pulses | The UI stopped in |
+  |---|---|
+  | 1 | awake, outside the steps below |
+  | 2 | entering sleep (`lcd_sleep_ctrl(1)`) |
+  | 3 | asleep (sleep entry finished) |
+  | 4 | waking: panel power (`lcd_sleep_ctrl(0)`) |
+  | 5 | waking: waiting for the panel re-init task |
+  | 6 | woken: backlight, touch, waiting for key release |
+  | 7 | drawing (`lv_timer_handler()`) |
+  | 8 | drawing with the panel asleep (boot, or right after a Button 1 suspend) |
+  | 9 | booting, before the first sleep |
+
+  A separate 250 ms timer drives the pulses; if it never runs, the watchdog resets after
+  40 s anyway. No pulses and no reset means the timer itself stopped.
   The reset disables interrupts and spins, so the SDK's hardware watchdog
   (`WDT_LRC_4S` while running, `WDT_16S` during setup) resets the chip, the same path as
   an SDK `ASSERT` in this debug-UART build; `cpu_reset()` is only a late fallback. The
@@ -97,6 +117,9 @@ itself. RAM only; nothing is written to flash.
 - **Diagnostics.** With Display or Update open: `python -m qix_ble.safety ADDRESS`
   (Qix 0x97 -> 0x98, read-only). After a suspend, `last_sleep.te_per_second` near
   zero means the guard works; thousands per second would confirm the storm.
+  Page 3 (`watchdog` in the output) shows the watchdog timer's call count, the current
+  stage and the last callback interval measured by `timer_get_ms()` and by jiffies;
+  firmware without it does not answer page 3 and the field is `null`.
 
 ## Keep personal values out of Git and CI
 

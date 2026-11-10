@@ -118,6 +118,19 @@ def test_idle_keeps_key_scanner_and_leaves_clock_to_the_sdk(sdk):
     assert "if (g_badge_locked) badge_idle_wait();" in ui
     assert "if (badge_idle_take_key_wake() || g_badge_adkey_kv != NO_KEY)" in ui
     assert "os_time_dly(3);   /* ~30 ms poll" not in ui
+    # Stage marks around the sleep and wake steps, in order, and nothing else moved.
+    assert enter.index("badge_stage(BS_STAGE_SLEEP_ENTER);") < enter.index("lcd_sleep_ctrl(1);") \
+        < enter.index("badge_stage(BS_STAGE_ASLEEP);")
+    assert wake.index("badge_stage(BS_STAGE_WAKE_POWER);") < wake.index("lcd_sleep_ctrl(0);") \
+        < wake.index("badge_stage(BS_STAGE_WAKE_REINIT);") < wake.index("lcd_reinit_wait_finish();") \
+        < wake.index("badge_stage(BS_STAGE_WAKE_DONE);") < wake.index("lcd_drv_backlight_ctrl(g_bright_pct")
+    draw = ui.index("badge_stage(g_badge_locked ? BS_STAGE_ASLEEP_DRAW : BS_STAGE_DRAW);")
+    assert draw < ui.index("lv_timer_handler();", draw) \
+        < ui.index("badge_stage(g_badge_locked ? BS_STAGE_ASLEEP : BS_STAGE_AWAKE);", draw)
+    gui = ui[ui.index("void jl_gui_init(void)"):]
+    assert gui.index("badge_lock_enter();") < gui.index("badge_stage(BS_STAGE_ASLEEP_DRAW);")
+    assert ui.index('#include "badge_safety.h"') < ui.index("badge_stage(")
+    assert ui.count("badge_stage(") == 10
     board = (sdk / system.BOARD).read_text(encoding="utf8")
     assert board.index("badge_idle_event_init(&badge_touch_event);") < board.index('task_create(axs_poll_task, NULL, "axs_poll")')
     assert "badge_idle_event_wait(&badge_touch_event, 0)" in board

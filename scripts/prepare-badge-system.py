@@ -154,6 +154,37 @@ def prepare(sdk):
                  '                if (g_badge_locked) badge_idle_wait(); /* key event or 1 s power tick */')
     ui = replace(ui, '                extern u8 get_charge_online_flag(void);\n', '')
     ui = replace(ui, 'u8 chg_now = get_charge_online_flag();', 'u8 chg_now = badge_usb_online();')
+    # Stage marks for the safety watchdog (badge_safety.h, BS_STAGE_*): a stall blinks
+    # the stage number before the reset. Marks only; no step is reordered or changed.
+    ui = replace(ui, '    lcd_sleep_ctrl(1);            /* backlight 0 + panel to sleep + power down */\n',
+                 '    badge_stage(BS_STAGE_SLEEP_ENTER);\n'
+                 '    lcd_sleep_ctrl(1);            /* backlight 0 + panel to sleep + power down */\n'
+                 '    badge_stage(BS_STAGE_ASLEEP);\n')
+    ui = replace(ui, '    lcd_sleep_ctrl(0);            /* powers the panel back on (kicks off the re-init task) */\n'
+                     '    lcd_reinit_wait_finish();     /* blocks until the panel re-init finishes */\n',
+                 '    badge_stage(BS_STAGE_WAKE_POWER);\n'
+                 '    lcd_sleep_ctrl(0);            /* powers the panel back on (kicks off the re-init task) */\n'
+                 '    badge_stage(BS_STAGE_WAKE_REINIT);\n'
+                 '    lcd_reinit_wait_finish();     /* blocks until the panel re-init finishes */\n'
+                 '    badge_stage(BS_STAGE_WAKE_DONE);\n')
+    ui = replace(ui, '                    badge_lock_wake();\n'
+                     '                    while (g_badge_adkey_kv != NO_KEY) { os_time_dly(2); }  /* wait for release */\n',
+                 '                    badge_lock_wake();\n'
+                 '                    while (g_badge_adkey_kv != NO_KEY) { os_time_dly(2); }  /* wait for release */\n'
+                 '                    badge_stage(BS_STAGE_AWAKE);\n')
+    ui = replace(ui, '            badge_display_tick();\n            lv_timer_handler();\n',
+                 '            badge_display_tick();\n'
+                 '            badge_stage(g_badge_locked ? BS_STAGE_ASLEEP_DRAW : BS_STAGE_DRAW);\n'
+                 '            lv_timer_handler();\n'
+                 '            badge_stage(g_badge_locked ? BS_STAGE_ASLEEP : BS_STAGE_AWAKE);\n')
+    # Boot: the SDK runs one lv_timer_handler() between jl_gui_init() and the menu loop,
+    # after the boot-time sleep. That SDK line is outside the patch, so mark around it.
+    ui = replace(ui, '#else\n    badge_lock_enter();\n#endif\n    return;\n',
+                 '#else\n    badge_lock_enter();\n    badge_stage(BS_STAGE_ASLEEP_DRAW);   /* the SDK draws once before the menu loop */\n'
+                 '#endif\n    return;\n')
+    ui = replace(ui, '    ui_sysinfo_init();\n\n#ifdef CONFIG_BADGE_MENU\n',
+                 '    ui_sysinfo_init();\n\n#ifdef CONFIG_BADGE_MENU\n'
+                 '    badge_stage(g_badge_locked ? BS_STAGE_ASLEEP : BS_STAGE_AWAKE);\n')
     # Claim Update before any catalogue erase; serialize with the Back callback
     # so a BLE upload cannot race the UI into reading resources being replaced.
     ui = replace(ui, 'static u8 g_on_update_scr;             /* the update screen is showing */', '''static volatile u8 g_on_update_scr; /* shared with resource upload dispatch */

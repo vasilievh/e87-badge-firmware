@@ -123,38 +123,70 @@ static void test_sleep_and_pages(void)
 {
     bs_sleep s = {0};
     bs_watchdog w = {0};
+    bs_diag d = {0};
     uint8_t reply[BS_PAGE_SIZE];
     const uint8_t p0[4] = {'B', 'S', 1, 0}, p1[4] = {'B', 'S', 1, 1}, p2[4] = {'B', 'S', 1, 2};
-    const uint8_t bad_magic[4] = {'B', 'P', 1, 0}, bad_page[4] = {'B', 'S', 1, 3};
+    const uint8_t bad_magic[4] = {'B', 'P', 1, 0}, bad_page[4] = {'B', 'S', 1, 4};
+    const uint8_t p3[4] = {'B', 'S', 1, 3};
 
-    assert(bs_page(&s, &w, 7, 9, 0, bad_magic, 4, reply) == 0);
-    assert(bs_page(&s, &w, 7, 9, 0, bad_page, 4, reply) == 0);
-    assert(bs_page(&s, &w, 7, 9, 0, p0, 3, reply) == 0);
+    assert(bs_page(&s, &w, &d, 7, 9, 0, bad_magic, 4, reply) == 0);
+    assert(bs_page(&s, &w, &d, 7, 9, 0, bad_page, 4, reply) == 0);
+    assert(bs_page(&s, &w, &d, 7, 9, 0, p0, 3, reply) == 0);
     /* No sleep yet: pages 1 and 2 are zero. */
-    assert(bs_page(&s, &w, 7, 9, 0, p1, 4, reply) == BS_PAGE_SIZE && rd32(reply + 4) == 0);
-    assert(bs_page(&s, &w, 7, 9, 0, p2, 4, reply) == BS_PAGE_SIZE && rd32(reply + 8) == 0);
+    assert(bs_page(&s, &w, &d, 7, 9, 0, p1, 4, reply) == BS_PAGE_SIZE && rd32(reply + 4) == 0);
+    assert(bs_page(&s, &w, &d, 7, 9, 0, p2, 4, reply) == BS_PAGE_SIZE && rd32(reply + 8) == 0);
 
     bs_sleep_exit(&s, 10, 100);                 /* exit without enter: ignored */
     assert(s.flags == 0);
     bs_sleep_enter(&s, 1000, 50);
     bs_sleep_enter(&s, 2000, 60);               /* repeated enter keeps the first */
-    assert(bs_page(&s, &w, 4050, 9, 61000, p2, 4, reply) == BS_PAGE_SIZE);
+    assert(bs_page(&s, &w, &d, 4050, 9, 61000, p2, 4, reply) == BS_PAGE_SIZE);
     assert(rd32(reply + 4) == 4000 && rd32(reply + 8) == 60);
-    assert(bs_page(&s, &w, 4050, 9, 61000, p0, 4, reply) == BS_PAGE_SIZE);
+    assert(bs_page(&s, &w, &d, 4050, 9, 61000, p0, 4, reply) == BS_PAGE_SIZE);
     assert(reply[12] == BS_ASLEEP && rd32(reply + 4) == 4050);
     bs_sleep_exit(&s, 3601000, 5050);
-    assert(bs_page(&s, &w, 5050, 9, 3601000, p1, 4, reply) == BS_PAGE_SIZE);
+    assert(bs_page(&s, &w, &d, 5050, 9, 3601000, p1, 4, reply) == BS_PAGE_SIZE);
     assert(memcmp(reply, p1, 4) == 0 && rd32(reply + 4) == 5000 && rd32(reply + 8) == 3600);
-    assert(bs_page(&s, &w, 5050, 9, 3601000, p2, 4, reply) == BS_PAGE_SIZE && rd32(reply + 4) == 0);
+    assert(bs_page(&s, &w, &d, 5050, 9, 3601000, p2, 4, reply) == BS_PAGE_SIZE && rd32(reply + 4) == 0);
+
+    /* Page 3: timer calls, stage, blinking, both interval measurements. */
+    d.calls = 0x01020304u; d.stage = BS_STAGE_WAKE_REINIT; d.blinking = 1;
+    d.interval_ms = 4999; d.interval_jiffies_ms = 65535;
+    assert(bs_page(&s, &w, &d, 0, 0, 0, p3, 4, reply) == BS_PAGE_SIZE && memcmp(reply, p3, 4) == 0);
+    assert(rd32(reply + 4) == 0x01020304u && reply[8] == 5 && reply[9] == 1);
+    assert((reply[10] | reply[11] << 8) == 4999 && (reply[12] | reply[13] << 8) == 65535);
 
     w.stalled_ms = 1000000; w.exempt = 1;
-    assert(bs_page(&s, &w, 5050, 123456, 0, p0, 4, reply) == BS_PAGE_SIZE);
+    assert(bs_page(&s, &w, &d, 5050, 123456, 0, p0, 4, reply) == BS_PAGE_SIZE);
     assert(rd32(reply + 8) == 123456 && reply[12] == (BS_LAST_VALID | BS_EXEMPT) && reply[13] == 255);
+}
+
+/* Blink sequence: 1.5 s dark, `stage` pulses, three rounds, then over. */
+static void test_blink(void)
+{
+    unsigned stage, tick, pulses, rounds_dark;
+    int level, prev;
+    for (stage = 1; stage <= 9; stage++) {
+        pulses = 0; rounds_dark = 0; prev = 0;
+        for (tick = 0; (level = bs_blink_level(stage, tick)) >= 0; tick++) {
+            assert(level == 0 || level == (int)BS_BLINK_LEVEL);
+            if (level && !prev) pulses++;
+            if (tick % (BS_BLINK_GAP_TICKS + stage * 3u) == 0) { assert(level == 0); rounds_dark++; }
+            prev = level;
+        }
+        assert(pulses == stage * BS_BLINK_ROUNDS && rounds_dark == BS_BLINK_ROUNDS);
+        assert(tick * BS_BLINK_TICK_MS < BS_BLINK_MAX_WD_CALLS * BS_WD_PERIOD_MS);
+    }
+    assert(bs_blink_level(0, 0) == 0 && bs_blink_level(10, 0) == 0);   /* clamped to 9 */
+    for (tick = 0; bs_blink_level(0, tick) >= 0; tick++) { }
+    assert(tick == BS_BLINK_ROUNDS * (BS_BLINK_GAP_TICKS + 9u * 3u));
+    assert(bs_cap16(70000) == 65535 && bs_cap16(4999) == 4999);
 }
 
 int main(void)
 {
     test_watchdog();
+    test_blink();
     test_sleep_and_pages();
     puts("safety: ok");
     return 0;
