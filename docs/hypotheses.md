@@ -10,8 +10,9 @@ Status: **open** (not yet tested), **supported** (evidence agrees, not proven),
 
 Symptom: same firmware. Drained, charged for an unknown time while suspended, unplugged,
 woken, Button to the menu: hung in the menu, battery shown as 7%. Third hang in a row at
-the same step (lock image -> menu), after one at Update. Whether the frame stopped at the
-same line as in the third hang is being checked.
+the same step (lock image -> menu), after one at Update. This time the menu frame was drawn
+completely before the hang, so the cut line is not fixed: no sign of one piece of frame
+content that always stops it.
 
 ## 2026-11-11 (third): frame half drawn, on battery at 100%
 
