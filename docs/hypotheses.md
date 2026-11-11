@@ -6,6 +6,13 @@ next person from chasing them again. Newest incident first.
 Status: **open** (not yet tested), **supported** (evidence agrees, not proven),
 **confirmed** (measured), **rejected** (evidence contradicts).
 
+## 2026-11-11 (fourth): hang again on going from the lock image to the menu
+
+Symptom: same firmware. Drained, charged for an unknown time while suspended, unplugged,
+woken, Button to the menu: hung in the menu, battery shown as 7%. Third hang in a row at
+the same step (lock image -> menu), after one at Update. Whether the frame stopped at the
+same line as in the third hang is being checked.
+
 ## 2026-11-11 (third): frame half drawn, on battery at 100%
 
 Symptom: same firmware (`eb5a1f5`). Charged to 100% while suspended, USB unplugged, then
@@ -17,7 +24,7 @@ their wallpaper).
 
 | Hypothesis | Status | Evidence / how to test |
 |---|---|---|
-| A frame transfer to the panel stalls part-way and the UI waits for it forever | supported | The photo: the panel received the top bands of the new frame and nothing after. With `TCFG_LCD_FB_CNT 2` LVGL sends a frame in bands; one band's completion never arrived, so the next was never sent. Fits the review of `lcd_lock()` / `lcd_wait_busy()` (unbounded waits). The CPU should still be running, so the fixed watchdog in `fix/wake-diag` should catch it (7 pulses). |
+| The UI stops part-way through a frame | supported | The photo: the panel received the top bands of the new frame and nothing after. Either the transfer of the next band never completed, or rendering the next band never finished (both leave earlier bands on screen); which one is open. The same cut line in every hang would point at the frame's content (rendering), a varying one at the transfer. With `TCFG_LCD_FB_CNT 2` LVGL sends a frame in bands; one band's completion never arrived, so the next was never sent. Fits the review of `lcd_lock()` / `lcd_wait_busy()` (unbounded waits). The CPU should still be running, so the fixed watchdog in `fix/wake-diag` should catch it (7 pulses). |
 | USB is required | rejected | This one was on battery at 100%. USB may still raise the odds; not shown. |
 
 ## 2026-11-11 (second): hang on pressing Update again, empty battery on USB
