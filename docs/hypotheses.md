@@ -6,6 +6,16 @@ next person from chasing them again. Newest incident first.
 Status: **open** (not yet tested), **supported** (evidence agrees, not proven),
 **confirmed** (measured), **rejected** (evidence contradicts).
 
+## 2026-11-11 (fifth): hang on wake after charging and a cool-down
+
+Symptom: same firmware. Charged while suspended, unplugged, left to cool, woken: black
+screen, no response. Sixth hang in a row within the first actions after a cold boot.
+
+| Hypothesis | Status | Evidence / how to test |
+|---|---|---|
+| Heat right after charging causes the hangs | rejected (one try) | Cooled down before waking; hung anyway. |
+| The battery has degraded (repeated drains to empty since 2026-11-10) and its voltage sags under load spikes (panel power-up and backlight at wake, a full-screen draw, the radio starting), locking the board up | open | The hang rate went from rare (hours of use on 2026-11-09/10) to nearly every attempt after five or six deep drains, and the hangs sit at load spikes. A lock-up of the chip would also explain no reset and no radio. The original 2026-11-09 hang predates the drains, so this would add to, not replace, the first cause. Test: wake on a full battery with a standard 5 V / 1-2 A adapter connected, so USB carries the spike; `qix_ble.power` battery readings under load once Update is reachable. |
+
 ## 2026-11-11 (fourth): hang again on going from the lock image to the menu
 
 Symptom: same firmware. Drained, charged for an unknown time while suspended, unplugged,
